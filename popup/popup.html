@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Homestead Overlay Planner</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="popup-header">
+        <h1>Homestead Overlay Planner</h1>
+        <p id="pageStatus" class="page-status">Checking current tab…</p>
+      </header>
+
+      <section class="primary-actions">
+        <button id="startPlanningBtn" class="primary-btn" type="button">
+          Start Planning
+        </button>
+      </section>
+
+      <section class="plans-section">
+        <div class="section-title-row">
+          <h2>Saved Plans</h2>
+        </div>
+        <div id="plansList" class="plans-list"></div>
+      </section>
+
+      <p id="flashMessage" class="flash-message" aria-live="polite"></p>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

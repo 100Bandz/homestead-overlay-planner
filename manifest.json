@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Homestead Overlay Planner",
+  "version": "1.0.0",
+  "description": "Draw and save homestead planning overlays on top of Google Maps.",
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": [
+    "https://www.google.com/maps/*",
+    "https://www.google.ca/maps/*",
+    "https://maps.google.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_title": "Homestead Overlay Planner",
+    "default_popup": "popup/popup.html"
+  }
+}
