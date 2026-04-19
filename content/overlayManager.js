@@ -904,6 +904,153 @@
       });
     }
 
+    _canonicalVector(fromPoint, toPoint) {
+      return {
+        x: HOP.projection.wrapDeltaX(toPoint.x - fromPoint.x),
+        y: toPoint.y - fromPoint.y
+      };
+    }
+
+    _vectorLength(vector) {
+      return Math.hypot(vector.x, vector.y);
+    }
+
+    _normalizeVector(vector) {
+      const length = this._vectorLength(vector);
+      if (!Number.isFinite(length) || length <= 0) {
+        return null;
+      }
+      return {
+        x: vector.x / length,
+        y: vector.y / length
+      };
+    }
+
+    _scaleVector(vector, scale) {
+      return {
+        x: vector.x * scale,
+        y: vector.y * scale
+      };
+    }
+
+    _addVector(point, vector) {
+      return this._normalizePoint({
+        x: point.x + vector.x,
+        y: point.y + vector.y
+      });
+    }
+
+    _subtractVector(point, vector) {
+      return this._normalizePoint({
+        x: point.x - vector.x,
+        y: point.y - vector.y
+      });
+    }
+
+    _rectangleFrame(points) {
+      if (!Array.isArray(points) || points.length !== 4) {
+        return null;
+      }
+
+      const baseX = points[0].x;
+      const unwrapped = points.map((point) => ({
+        x: baseX + HOP.projection.wrapDeltaX(point.x - baseX),
+        y: point.y
+      }));
+
+      const center = unwrapped.reduce(
+        (acc, point) => ({
+          x: acc.x + point.x / 4,
+          y: acc.y + point.y / 4
+        }),
+        { x: 0, y: 0 }
+      );
+
+      const rawU = {
+        x: unwrapped[1].x - unwrapped[0].x,
+        y: unwrapped[1].y - unwrapped[0].y
+      };
+      const rawV = {
+        x: unwrapped[3].x - unwrapped[0].x,
+        y: unwrapped[3].y - unwrapped[0].y
+      };
+
+      const uUnit = this._normalizeVector(rawU);
+      if (!uUnit) {
+        return null;
+      }
+
+      const dot = rawV.x * uUnit.x + rawV.y * uUnit.y;
+      let perpV = {
+        x: rawV.x - dot * uUnit.x,
+        y: rawV.y - dot * uUnit.y
+      };
+
+      let vLength = this._vectorLength(perpV);
+      if (!Number.isFinite(vLength) || vLength <= 0) {
+        perpV = {
+          x: -uUnit.y,
+          y: uUnit.x
+        };
+        vLength = 1;
+      }
+
+      const cross = rawU.x * rawV.y - rawU.y * rawV.x;
+      const orientationSign = cross >= 0 ? 1 : -1;
+      let vUnit = this._normalizeVector(perpV);
+      if (!vUnit) {
+        return null;
+      }
+      vUnit = {
+        x: vUnit.x * orientationSign,
+        y: vUnit.y * orientationSign
+      };
+
+      const widthCanonical = this._vectorLength(rawU);
+      const heightCanonical = vLength;
+
+      if (!Number.isFinite(widthCanonical) || widthCanonical <= 0) {
+        return null;
+      }
+
+      return {
+        center,
+        uUnit,
+        vUnit,
+        widthCanonical,
+        heightCanonical
+      };
+    }
+
+    _buildRectanglePointsFromFrame(frame, widthCanonical, heightCanonical) {
+      const halfU = this._scaleVector(frame.uUnit, widthCanonical / 2);
+      const halfV = this._scaleVector(frame.vUnit, heightCanonical / 2);
+
+      const p0Unwrapped = {
+        x: frame.center.x - halfU.x - halfV.x,
+        y: frame.center.y - halfU.y - halfV.y
+      };
+      const p1Unwrapped = {
+        x: frame.center.x + halfU.x - halfV.x,
+        y: frame.center.y + halfU.y - halfV.y
+      };
+      const p2Unwrapped = {
+        x: frame.center.x + halfU.x + halfV.x,
+        y: frame.center.y + halfU.y + halfV.y
+      };
+      const p3Unwrapped = {
+        x: frame.center.x - halfU.x + halfV.x,
+        y: frame.center.y - halfU.y + halfV.y
+      };
+
+      return [
+        this._normalizePoint(p0Unwrapped),
+        this._normalizePoint(p1Unwrapped),
+        this._normalizePoint(p2Unwrapped),
+        this._normalizePoint(p3Unwrapped)
+      ];
+    }
+
     _promptAndSetEdgeLength(shapeId, edgeIndex) {
       if (!this._isValidEdgeRef(shapeId, edgeIndex)) {
         return false;
@@ -966,20 +1113,6 @@
 
       if (mutable.type === "line") {
         mutable.points[1] = this._translatedPoint(mutable.points[1], deltaX, deltaY);
-      } else if (mutable.type === "rectangle" && mutable.points.length === 4) {
-        if (edgeIndex === 0) {
-          mutable.points[1] = this._translatedPoint(mutable.points[1], deltaX, deltaY);
-          mutable.points[2] = this._translatedPoint(mutable.points[2], deltaX, deltaY);
-        } else if (edgeIndex === 1) {
-          mutable.points[2] = this._translatedPoint(mutable.points[2], deltaX, deltaY);
-          mutable.points[3] = this._translatedPoint(mutable.points[3], deltaX, deltaY);
-        } else if (edgeIndex === 2) {
-          mutable.points[3] = this._translatedPoint(mutable.points[3], deltaX, deltaY);
-          mutable.points[0] = this._translatedPoint(mutable.points[0], deltaX, deltaY);
-        } else if (edgeIndex === 3) {
-          mutable.points[0] = this._translatedPoint(mutable.points[0], deltaX, deltaY);
-          mutable.points[1] = this._translatedPoint(mutable.points[1], deltaX, deltaY);
-        }
       } else {
         const endIndex = endpoints.endIndex;
         mutable.points[endIndex] = this._translatedPoint(mutable.points[endIndex], deltaX, deltaY);
