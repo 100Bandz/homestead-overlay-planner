@@ -15,10 +15,16 @@
       this.reportStatus = options.reportStatus;
       this.isLengthPickMode =
         typeof options.isLengthPickMode === "function" ? options.isLengthPickMode : () => false;
+      this.isAreaPickMode =
+        typeof options.isAreaPickMode === "function" ? options.isAreaPickMode : () => false;
       this.toggleEdgeLengthVisibility =
         typeof options.toggleEdgeLengthVisibility === "function"
           ? options.toggleEdgeLengthVisibility
           : () => {};
+      this.toggleShapeAreaVisibility =
+        typeof options.toggleShapeAreaVisibility === "function"
+          ? options.toggleShapeAreaVisibility
+          : () => false;
       this.prepareNewShape =
         typeof options.prepareNewShape === "function" ? options.prepareNewShape : (shape) => shape;
       this.requestUndo =
@@ -52,6 +58,7 @@
           ? options.connectLineEndpoints
           : () => false;
 
+      this.copiedShape = null;
       this.draft = null;
       this.pointerDrawing = null;
       this.draggingShape = null;
@@ -125,13 +132,18 @@
         return;
       }
 
-      const selectedId = this.selection.getSelectedId();
-      if (!selectedId) {
+      const selectedIds =
+        this.selection && typeof this.selection.getSelectedIds === "function"
+          ? this.selection.getSelectedIds()
+          : [this.selection.getSelectedId()].filter(Boolean);
+
+      if (!selectedIds.length) {
         return;
       }
 
       const before = this._cloneShapes(this.getShapes());
-      const filtered = this.getShapes().filter((shape) => shape.id !== selectedId);
+      const selectedSet = new Set(selectedIds);
+      const filtered = this.getShapes().filter((shape) => !selectedSet.has(shape.id));
       this.selection.clear();
       this.setEditShapeId(null);
       this.clearSelectedEdge();
@@ -176,6 +188,109 @@
         historySnapshot: before
       });
       return true;
+    }
+
+    _isCopyableShape(shape) {
+      if (!shape || typeof shape !== "object") {
+        return false;
+      }
+
+      return (
+        shape.type === "line" ||
+        shape.type === "rectangle" ||
+        shape.type === "polygon" ||
+        shape.type === "label"
+      );
+    }
+
+    _copySelectedShape() {
+      const selectedId = this.selection.getSelectedId();
+      if (!selectedId) {
+        this.reportStatus("Select a line, rectangle, polygon, or label first.");
+        return false;
+      }
+
+      const shape = this._findShapeById(selectedId);
+      if (!this._isCopyableShape(shape)) {
+        this.reportStatus("Only line, rectangle, polygon, and label shapes can be copied.");
+        return false;
+      }
+
+      this.copiedShape = JSON.parse(JSON.stringify(shape));
+      this.reportStatus("Shape copied.");
+      return true;
+    }
+
+    _offsetPoint(point, dx, dy) {
+      return {
+        x: HOP.projection.normalizeCanonicalX(Number(point.x) + dx),
+        y: this._normalizeY(Number(point.y) + dy)
+      };
+    }
+
+    _offsetCopyShape(shape, dx, dy) {
+      const clone = JSON.parse(JSON.stringify(shape || {}));
+      if (clone.type === "label") {
+        if (clone.point && Number.isFinite(clone.point.x) && Number.isFinite(clone.point.y)) {
+          clone.point = this._offsetPoint(clone.point, dx, dy);
+        }
+        return clone;
+      }
+
+      if (!Array.isArray(clone.points)) {
+        clone.points = [];
+      }
+      clone.points = clone.points.map((point) => this._offsetPoint(point, dx, dy));
+      return clone;
+    }
+
+    _pasteCopiedShape() {
+      if (!this._isCopyableShape(this.copiedShape)) {
+        this.reportStatus("Copy a line, rectangle, polygon, or label first.");
+        return false;
+      }
+
+      const view = this.getView();
+      const offsetScreenPixels = 24;
+      const offsetCanonical = view ? view.scale * offsetScreenPixels : 0;
+
+      const pasted = this._offsetCopyShape(
+        this.copiedShape,
+        offsetCanonical,
+        offsetCanonical
+      );
+
+      if (pasted.type === "label") {
+        if (!pasted.point || !Number.isFinite(pasted.point.x) || !Number.isFinite(pasted.point.y)) {
+          this.reportStatus("Could not paste shape.");
+          return false;
+        }
+      } else if (!Array.isArray(pasted.points) || pasted.points.length < 2) {
+        this.reportStatus("Could not paste shape.");
+        return false;
+      }
+
+      if (pasted.type === "line") {
+        delete pasted.connectionId;
+      }
+
+      pasted.id = HOP.ids.createId(
+        pasted.type === "label" ? "shape_label" : `shape_${pasted.type || "copy"}`
+      );
+      this._appendShape(pasted);
+      this.setEditShapeId(null);
+      this.clearSelectedEdge();
+      this.requestRender();
+      this.reportStatus("Shape pasted.");
+      return true;
+    }
+
+    copySelectedShape() {
+      return this._copySelectedShape();
+    }
+
+    pasteCopiedShape() {
+      return this._pasteCopiedShape();
     }
 
     _normalizeShortcut(shortcut) {
@@ -238,6 +353,46 @@
 
     _onKeyDown(event) {
       if (this._isTypingContext()) {
+        return;
+      }
+
+      const keyLower = String(event.key || "").toLowerCase();
+      const hasPrimaryModifier = !!(event.ctrlKey || event.metaKey);
+      const isPlainPrimary = hasPrimaryModifier && !event.shiftKey && !event.altKey;
+
+      if (isPlainPrimary && keyLower === "c") {
+        if (this._copySelectedShape()) {
+          event.preventDefault();
+        }
+        return;
+      }
+
+      if (isPlainPrimary && keyLower === "v") {
+        if (this._pasteCopiedShape()) {
+          event.preventDefault();
+        }
+        return;
+      }
+
+      if (isPlainPrimary && keyLower === "a") {
+        const allIds = this.getShapes()
+          .map((shape) => (shape && typeof shape.id === "string" ? shape.id : ""))
+          .filter(Boolean);
+        if (!allIds.length) {
+          return;
+        }
+
+        if (this.selection && typeof this.selection.selectMany === "function") {
+          this.selection.selectMany(allIds, { primaryId: this.selection.getSelectedId() || allIds[0] });
+        } else if (allIds[0]) {
+          this.selection.select(allIds[0]);
+        }
+
+        this.clearSelectedEdge();
+        this.setEditShapeId(null);
+        this.requestRender();
+        this.reportStatus(`Selected ${allIds.length} shapes.`);
+        event.preventDefault();
         return;
       }
 
@@ -643,6 +798,28 @@
         .map((candidate) => candidate.id);
     }
 
+    _composeDragGroupIds(shape) {
+      const baseIds = this._dragGroupIdsForShape(shape);
+      const selectedIds =
+        this.selection && typeof this.selection.getSelectedIds === "function"
+          ? this.selection.getSelectedIds()
+          : [this.selection.getSelectedId()].filter(Boolean);
+
+      if (
+        !shape ||
+        !shape.id ||
+        !selectedIds.length ||
+        selectedIds.length < 2 ||
+        !selectedIds.includes(shape.id)
+      ) {
+        return baseIds;
+      }
+
+      const all = new Set(baseIds);
+      selectedIds.forEach((id) => all.add(id));
+      return Array.from(all);
+    }
+
     _findLineEndpointByScreenPoint(screenPoint, tolerancePx) {
       const view = this.getView();
       if (!view) {
@@ -888,7 +1065,7 @@
             this.clearSelectedEdge();
             this.setEditShapeId(null);
 
-            const groupShapeIds = this._dragGroupIdsForShape(shape);
+            const groupShapeIds = this._composeDragGroupIds(shape);
             const startShapesById = {};
             const shapes = this.getShapes();
             groupShapeIds.forEach((id) => {
@@ -972,11 +1149,51 @@
           return;
         }
 
-        this.selection.select(shapeId);
-        this.clearSelectedEdge();
         const shape = this._findShapeById(shapeId);
+        if (!shape) {
+          return;
+        }
+
+        if (
+          this.isAreaPickMode() &&
+          (shape.type === "rectangle" || shape.type === "polygon")
+        ) {
+          event.preventDefault();
+          this.selection.select(shapeId);
+          this.clearSelectedEdge();
+          this.setEditShapeId(null);
+          this.toggleShapeAreaVisibility(shapeId);
+          this.requestRender();
+          return;
+        }
+
+        if (event.shiftKey) {
+          event.preventDefault();
+          if (this.selection && typeof this.selection.has === "function" && this.selection.has(shapeId)) {
+            this.selection.remove(shapeId);
+          } else if (this.selection && typeof this.selection.add === "function") {
+            this.selection.add(shapeId);
+          } else {
+            this.selection.select(shapeId);
+          }
+          this.clearSelectedEdge();
+          this.setEditShapeId(null);
+          this.requestRender();
+          return;
+        }
+
+        const isAlreadySelected =
+          this.selection && typeof this.selection.has === "function"
+            ? this.selection.has(shapeId)
+            : this.selection.getSelectedId() === shapeId;
+
+        if (!isAlreadySelected) {
+          this.selection.select(shapeId);
+        }
+        this.clearSelectedEdge();
+
         if (shape && point) {
-          const groupShapeIds = this._dragGroupIdsForShape(shape);
+          const groupShapeIds = this._composeDragGroupIds(shape);
           const startShapesById = {};
           const shapes = this.getShapes();
           groupShapeIds.forEach((id) => {
@@ -1431,6 +1648,7 @@
         });
 
         this.selection.select(shapeId);
+        this.triggerShortcutAction("select");
         this.requestRender();
         this._editLabelText(shapeId, "Label text:");
         return;

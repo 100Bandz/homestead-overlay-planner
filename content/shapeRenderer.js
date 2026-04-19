@@ -77,6 +77,7 @@
       view,
       shapes,
       selectedId,
+      selectedIds,
       selectedEdge,
       editShapeId,
       draft,
@@ -97,6 +98,11 @@
       }
 
       const shapeList = Array.isArray(shapes) ? shapes : [];
+      const selectedSet = new Set(
+        Array.isArray(selectedIds)
+          ? selectedIds.filter((id) => typeof id === "string" && id)
+          : (selectedId ? [selectedId] : [])
+      );
       const knownIds = new Set(shapeList.map((shape) => shape.id));
       Array.from(this.areaAnchorByShapeId.keys()).forEach((shapeId) => {
         if (!knownIds.has(shapeId)) {
@@ -119,7 +125,7 @@
         const rendered = this._renderShape(
           shape,
           view,
-          selectedId === shape.id,
+          selectedSet.has(shape.id),
           editShapeId === shape.id,
           settings
         );

@@ -44,6 +44,9 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 - `Lengths: On/Off`
 - `Areas: On/Off`
 - `Show/Unshow Length`
+- `Show/Unshow Area`
+- `Copy`
+- `Paste`
 - `Undo`
 - `Redo`
 - `Delete Selected`
@@ -51,6 +54,12 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 - `Exit`
 
 `Pan Mode` is the default tool when the overlay starts or when a plan is loaded.
+
+Copy/Paste shortcuts are also available while not typing:
+- `Ctrl/Cmd + C` to copy the selected line/rectangle/polygon/label
+- `Ctrl/Cmd + V` to paste a cloned shape
+- `Ctrl/Cmd + A` to select all shapes for group move
+- `Shift + Click` to add/remove shapes from selection
 
 ## Shape Navigator
 
@@ -87,6 +96,7 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
   - Global lengths on/off
   - Global areas on/off
   - Per-side length visibility via `Show/Unshow Length` mode
+  - Per-shape area visibility via `Show/Unshow Area` mode
 
 ## Key Bindings
 
@@ -103,6 +113,7 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
   - `Redo`
   - `Length Toggle`
   - `Show/Unshow Length`
+  - `Show/Unshow Area`
   - `Save`
   - `Exit`
 

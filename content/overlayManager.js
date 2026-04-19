@@ -28,7 +28,8 @@
       this.measurementSettings = {
         showAllLengths: true,
         showAllAreas: true,
-        sideToggleMode: false
+        sideToggleMode: false,
+        areaToggleMode: false
       };
       this.navigatorBusyShapeId = null;
       this.navigatorUiStateStorageKey = "homesteadOverlayPlannerNavigatorUiStateV1";
@@ -49,6 +50,7 @@
         redo: "y",
         length: "k",
         showUnshowLength: "j",
+        showUnshowArea: "u",
         save: "s",
         exit: "x"
       };
@@ -125,8 +127,10 @@
         },
         reportStatus: (message) => this.ui.showStatus(message),
         isLengthPickMode: () => this.measurementSettings.sideToggleMode,
+        isAreaPickMode: () => this.measurementSettings.areaToggleMode,
         toggleEdgeLengthVisibility: (shapeId, edgeIndex) =>
           this._toggleEdgeLengthVisibility(shapeId, edgeIndex),
+        toggleShapeAreaVisibility: (shapeId) => this._toggleShapeAreaVisibility(shapeId),
         prepareNewShape: (shape) => this._normalizeShape(shape),
         requestUndo: () => this.undo(),
         requestRedo: () => this.redo(),
@@ -856,6 +860,37 @@
       }
     }
 
+    _pruneSelectionToExistingShapes() {
+      const existingIds = new Set(this.shapes.map((shape) => shape.id));
+      const selectedIds =
+        this.selection && typeof this.selection.getSelectedIds === "function"
+          ? this.selection.getSelectedIds()
+          : (this.selection && this.selection.getSelectedId
+              ? [this.selection.getSelectedId()].filter(Boolean)
+              : []);
+
+      if (!selectedIds.length) {
+        return;
+      }
+
+      const kept = selectedIds.filter((id) => existingIds.has(id));
+      if (!kept.length) {
+        this.selection.clear();
+        return;
+      }
+
+      if (kept.length !== selectedIds.length) {
+        const primary = this.selection.getSelectedId();
+        if (typeof this.selection.selectMany === "function") {
+          this.selection.selectMany(kept, { primaryId: primary });
+        } else if (kept.includes(primary)) {
+          this.selection.select(primary);
+        } else {
+          this.selection.select(kept[0]);
+        }
+      }
+    }
+
     _setShapes(nextShapes, options) {
       const opts = options && typeof options === "object" ? options : {};
 
@@ -870,10 +905,7 @@
         this.editShapeId = null;
       }
 
-      const selectedId = this.selection.getSelectedId();
-      if (selectedId && !this.shapes.some((shape) => shape.id === selectedId)) {
-        this.selection.clear();
-      }
+      this._pruneSelectionToExistingShapes();
 
       if (
         this.selectedEdge &&
@@ -900,7 +932,7 @@
         if (tool !== HOP.constants.TOOL.CONNECTION) {
           this.selectedEdge = null;
         }
-      } else if (this.measurementSettings.sideToggleMode) {
+      } else if (this.measurementSettings.sideToggleMode || this.measurementSettings.areaToggleMode) {
         this.selectedEdge = null;
       }
 
@@ -934,6 +966,14 @@
         this.measurementSettings.sideToggleMode
           ? "Show/Unshow Length: ON"
           : "Show/Unshow Length"
+      );
+
+      this.ui.setButtonState(
+        HOP.constants.TOOLBAR_ACTION.TOGGLE_AREA_PICK,
+        this.measurementSettings.areaToggleMode,
+        this.measurementSettings.areaToggleMode
+          ? "Show/Unshow Area: ON"
+          : "Show/Unshow Area"
       );
 
       this.ui.setButtonState(
@@ -995,6 +1035,9 @@
 
     _toggleLengthPickMode() {
       this.measurementSettings.sideToggleMode = !this.measurementSettings.sideToggleMode;
+      if (this.measurementSettings.sideToggleMode) {
+        this.measurementSettings.areaToggleMode = false;
+      }
       if (this.measurementSettings.sideToggleMode && this.activeTool !== HOP.constants.TOOL.SELECT) {
         this._setTool(HOP.constants.TOOL.SELECT);
       }
@@ -1011,6 +1054,73 @@
       }
 
       this._render();
+    }
+
+    _toggleAreaPickMode() {
+      this.measurementSettings.areaToggleMode = !this.measurementSettings.areaToggleMode;
+      if (this.measurementSettings.areaToggleMode) {
+        this.measurementSettings.sideToggleMode = false;
+      }
+      if (this.measurementSettings.areaToggleMode && this.activeTool !== HOP.constants.TOOL.SELECT) {
+        this._setTool(HOP.constants.TOOL.SELECT);
+      }
+      if (this.measurementSettings.areaToggleMode) {
+        this.selectedEdge = null;
+      }
+
+      this._refreshToolbarStates();
+
+      if (this.measurementSettings.areaToggleMode) {
+        this.ui.showStatus("Area toggle mode active. Click a rectangle/polygon to show/hide its area.");
+      } else {
+        this.ui.showStatus("Area toggle mode disabled.");
+      }
+
+      this._render();
+    }
+
+    _toggleShapeAreaVisibility(shapeId) {
+      const shapes = this.shapes.slice();
+      const shapeIndex = shapes.findIndex((shape) => shape.id === shapeId);
+      if (shapeIndex < 0) {
+        return false;
+      }
+
+      const shape = shapes[shapeIndex];
+      if (
+        !shape ||
+        (shape.type !== "rectangle" && shape.type !== "polygon") ||
+        !Array.isArray(shape.points) ||
+        shape.points.length < 3
+      ) {
+        return false;
+      }
+
+      const measurements = shape.measurements && typeof shape.measurements === "object"
+        ? shape.measurements
+        : {};
+      if (Array.isArray(measurements.openEdges) && measurements.openEdges.some(Boolean)) {
+        this.ui.showStatus("Area labels are unavailable for open shapes.");
+        return false;
+      }
+
+      const nextAreaVisible = measurements.areaVisible === false;
+      shapes[shapeIndex] = {
+        ...shape,
+        measurements: {
+          ...measurements,
+          areaVisible: nextAreaVisible
+        }
+      };
+
+      this._setShapes(shapes, { recordHistory: true });
+      this._refreshToolbarStates();
+
+      const name = this._shapeNavigatorName(shape, shapeIndex);
+      this.ui.showStatus(
+        `${nextAreaVisible ? "Area shown" : "Area hidden"} for ${name}.`
+      );
+      return true;
     }
 
     _shapeEdgeCount(shape) {
@@ -1569,6 +1679,10 @@
         this._toggleLengthPickMode();
         return true;
       }
+      if (action === "showUnshowArea") {
+        this._toggleAreaPickMode();
+        return true;
+      }
       if (action === "save") {
         this.saveCurrentPlan();
         return true;
@@ -1593,10 +1707,7 @@
         this.editShapeId = null;
       }
 
-      const selectedId = this.selection.getSelectedId();
-      if (selectedId && !this.shapes.some((shape) => shape.id === selectedId)) {
-        this.selection.clear();
-      }
+      this._pruneSelectionToExistingShapes();
 
       if (
         this.selectedEdge &&
@@ -1623,10 +1734,7 @@
         this.editShapeId = null;
       }
 
-      const selectedId = this.selection.getSelectedId();
-      if (selectedId && !this.shapes.some((shape) => shape.id === selectedId)) {
-        this.selection.clear();
-      }
+      this._pruneSelectionToExistingShapes();
 
       if (
         this.selectedEdge &&
@@ -1666,6 +1774,21 @@
 
       if (action === HOP.constants.TOOLBAR_ACTION.TOGGLE_LENGTH_PICK) {
         this._toggleLengthPickMode();
+        return;
+      }
+
+      if (action === HOP.constants.TOOLBAR_ACTION.TOGGLE_AREA_PICK) {
+        this._toggleAreaPickMode();
+        return;
+      }
+
+      if (action === HOP.constants.TOOLBAR_ACTION.COPY) {
+        this.drawingTools.copySelectedShape();
+        return;
+      }
+
+      if (action === HOP.constants.TOOLBAR_ACTION.PASTE) {
+        this.drawingTools.pasteCopiedShape();
         return;
       }
 
@@ -1723,6 +1846,10 @@
         view: this._buildViewModel(),
         shapes: this.shapes,
         selectedId: this.selection.getSelectedId(),
+        selectedIds:
+          typeof this.selection.getSelectedIds === "function"
+            ? this.selection.getSelectedIds()
+            : [this.selection.getSelectedId()].filter(Boolean),
         selectedEdge: this.selectedEdge,
         editShapeId: this.editShapeId,
         draft: this.drawingTools ? this.drawingTools.getDraft() : null,

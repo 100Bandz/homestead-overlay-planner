@@ -35,6 +35,7 @@ const BINDING_ACTIONS = [
   { id: "redo", label: "Redo" },
   { id: "length", label: "Length Toggle" },
   { id: "showUnshowLength", label: "Show/Unshow Length" },
+  { id: "showUnshowArea", label: "Show/Unshow Area" },
   { id: "save", label: "Save" },
   { id: "exit", label: "Exit" }
 ];
@@ -51,6 +52,7 @@ const DEFAULT_KEY_BINDINGS = Object.freeze({
   redo: "y",
   length: "k",
   showUnshowLength: "j",
+  showUnshowArea: "u",
   save: "s",
   exit: "x"
 });
