@@ -551,6 +551,51 @@
       this.requestRender();
     }
 
+    _finishPolygonAtPoint(point) {
+      if (!this.draft || this.draft.type !== "polygon") {
+        return false;
+      }
+
+      const view = this.getView();
+      const points = this.draft.points.slice();
+
+      if (point && view && points.length) {
+        const lastScreen = HOP.projection.canonicalToScreen(points[points.length - 1], view);
+        const finishScreen = HOP.projection.canonicalToScreen(point, view);
+        if (HOP.geometry.distance(lastScreen, finishScreen) >= 3) {
+          points.push(point);
+        }
+      }
+
+      if (view && points.length >= 2) {
+        const deduped = [points[0]];
+        for (let i = 1; i < points.length; i += 1) {
+          const prevScreen = HOP.projection.canonicalToScreen(deduped[deduped.length - 1], view);
+          const nextScreen = HOP.projection.canonicalToScreen(points[i], view);
+          if (HOP.geometry.distance(prevScreen, nextScreen) >= 3) {
+            deduped.push(points[i]);
+          }
+        }
+        points.length = 0;
+        deduped.forEach((p) => points.push(p));
+      }
+
+      if (points.length < 3) {
+        this.reportStatus("Polygon needs at least 3 points.");
+        return false;
+      }
+
+      this._appendShape({
+        id: HOP.ids.createId("shape_poly"),
+        type: "polygon",
+        points
+      });
+
+      this.draft = null;
+      this.requestRender();
+      return true;
+    }
+
     _startVertexEdit(pointerId, shapeId, vertexIndex) {
       const shape = this._findShapeById(shapeId);
       if (!shape) {
@@ -1051,6 +1096,18 @@
 
       event.preventDefault();
       event.stopPropagation();
+
+      if (
+        event.detail >= 2 &&
+        this.draft &&
+        this.draft.type === "polygon" &&
+        Array.isArray(this.draft.points) &&
+        this.draft.points.length >= 2
+      ) {
+        this._finishPolygonAtPoint(point);
+        return;
+      }
+
       this._appendPolygonPoint(point);
     }
 
@@ -1135,39 +1192,7 @@
 
       event.preventDefault();
       event.stopPropagation();
-
-      if (!this.draft || this.draft.type !== "polygon") {
-        return;
-      }
-
-      const points = this.draft.points.slice();
-      const view = this.getView();
-      if (view && points.length >= 2) {
-        const deduped = [points[0]];
-        for (let i = 1; i < points.length; i += 1) {
-          const prevScreen = HOP.projection.canonicalToScreen(deduped[deduped.length - 1], view);
-          const nextScreen = HOP.projection.canonicalToScreen(points[i], view);
-          if (HOP.geometry.distance(prevScreen, nextScreen) >= 3) {
-            deduped.push(points[i]);
-          }
-        }
-        points.length = 0;
-        deduped.forEach((p) => points.push(p));
-      }
-
-      if (points.length < 3) {
-        this.reportStatus("Polygon needs at least 3 points.");
-        return;
-      }
-
-      this._appendShape({
-        id: HOP.ids.createId("shape_poly"),
-        type: "polygon",
-        points
-      });
-
-      this.draft = null;
-      this.requestRender();
+      this._finishPolygonAtPoint(this._canonicalPointFromEvent(event));
     }
 
     _appendShape(shape) {
