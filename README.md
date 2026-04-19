@@ -5,11 +5,10 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 ## What It Does
 
 - Injects a transparent SVG overlay into Google Maps tabs on demand.
-- Provides a floating in-page planner toolbar.
-- Draws and stores shape geometry in canonical Web Mercator global pixels at zoom 24.
-- Tracks map center/zoom from Google Maps URL (`/maps/@lat,lng,zoomz`) and reprojects shapes as the URL changes.
-- Saves plans in `chrome.storage.local`.
-- Lists, loads, deletes, and exports plans as JSON from the extension popup.
+- Draws and stores geometry in canonical Web Mercator global pixels at zoom 24.
+- Tracks map center/zoom from Google Maps URLs and reprojects shapes as URL state changes.
+- Saves plans in `chrome.storage.local` only (no backend).
+- Supports JSON export and JSON import for plans.
 
 ## Load Unpacked In Chrome
 
@@ -19,38 +18,93 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 4. Select this folder: `homestead-overlay-planner`.
 5. Open a Google Maps page and click the extension icon.
 
-## Usage
+## Popup Workflow
 
 1. Open Google Maps and navigate to your property.
 2. Click the extension icon.
 3. Click **Start Planning**.
-4. Use the in-page toolbar:
-   - `Select`
-   - `Pan Mode`
-   - `Line`
-   - `Rectangle`
-   - `Polygon` (click to add vertices, double-click to finish)
-   - `Label`
-   - `Lengths: On/Off` (global length visibility)
-   - `Areas: On/Off` (global area visibility for polygons/rectangles)
-   - `Show/Unshow Length` (click individual edges to toggle their length labels)
-   - `Undo`
-   - `Redo`
-   - `Delete Selected`
-   - `Save`
-   - `Exit`
-6. In `Select` mode:
-   - Double-click a `line`, `rectangle`, or `polygon` to show vertex handles for reshaping.
-   - Double-click a `label` (or press `Enter` when selected) to edit text.
-5. Reopen the popup later to load existing plans.
-6. Use **Export JSON** in the popup to export a saved plan.
+4. Enter a plan name when prompted. A new plan is created immediately and saved (even if empty).
+5. Use **Load** on any saved plan to jump to the saved map view and load shapes in one flow.
+6. In **Saved Plans**, you can:
+   - Click **Load**
+   - Click **Export JSON**
+   - Click **Delete**
+   - Double-click the plan name to rename it inline
+7. Use **Import JSON** to restore a plan from an exported `.json` file.
+
+## In-Map Toolbar
+
+- `Select`
+- `Pan Mode`
+- `Connection`
+- `Line`
+- `Rectangle`
+- `Polygon`
+- `Label`
+- `Lengths: On/Off`
+- `Areas: On/Off`
+- `Show/Unshow Length`
+- `Undo`
+- `Redo`
+- `Delete Selected`
+- `Save`
+- `Exit`
+
+`Pan Mode` is the default tool when the overlay starts or when a plan is loaded.
+
+## Editing and Interaction
+
+- `Select` mode:
+  - Drag line/rectangle/polygon/label to move.
+  - Drag selected shape/group to reposition.
+  - Press `Delete`/`Backspace` to delete selected shape (and keep using **Delete Selected** button if preferred).
+  - Double-click line/rectangle/polygon to toggle vertex edit handles.
+  - Drag vertex handles to reshape line endpoints / polygon / rectangle geometry.
+  - Selected line/rectangle/polygon shows a rotate handle (`R`) that supports click-hold-drag fluid rotation.
+  - Double-click length badge on a side to set exact side length (meters).
+  - Double-click polygon/rectangle side to select that side for side-delete operations.
+- Labels:
+  - Prompted for text after creation.
+  - Double-click label or press `Enter` while selected to edit text.
+  - Drag label bubble to reposition text box.
+  - Drag label resize handle to resize bubble width/height.
+- Polygon drawing:
+  - Click to add vertices.
+  - Double-click to finish.
+
+## Measurements
+
+- Line: length badge.
+- Rectangle/Polygon: side lengths (outside shape) and area (inside shape).
+- Closed loops formed by connected line segments also show derived area.
+- Length and area visibility controls:
+  - Global lengths on/off
+  - Global areas on/off
+  - Per-side length visibility via `Show/Unshow Length` mode
+
+## Key Bindings
+
+- Popup includes a **Key Bindings** section with **Customize** panel.
+- You can remap:
+  - `Select`
+  - `Pan Mode`
+  - `Connection`
+  - `Line`
+  - `Rectangle`
+  - `Polygon`
+  - `Label`
+  - `Undo`
+  - `Redo`
+  - `Length Toggle`
+  - `Show/Unshow Length`
+  - `Save`
+  - `Exit`
 
 ## Known Limitations
 
-- URL parsing currently supports common Google Maps URL forms that include `/maps/@lat,lng,zoomz`.
-- If Google Maps is in a non-standard URL/view mode, the planner shows a non-blocking unsupported-view message.
-- Shape editing MVP includes selecting/deleting shapes and dragging labels. Full vertex-level shape editing is not included.
-- Rendering alignment is based on browser viewport and URL-driven map center/zoom, so unusual Google Maps UI layouts can introduce minor visual offset.
+- URL parsing depends on Google Maps URL patterns containing `@lat,lng,zoom` values (supports `z` and meter-based `m` zoom units). Unsupported URL states show a non-blocking message.
+- Overlay alignment uses a viewport heuristic (largest visible map canvas). Major Google Maps UI/layout changes can cause minor visual offsets.
+- Measurements are approximate and intended for planning, not legal/survey/engineering use.
 
 ## Accuracy Disclaimer
 

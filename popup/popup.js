@@ -63,6 +63,8 @@ let settings = {
 
 const ui = {
   startButton: null,
+  importButton: null,
+  importInput: null,
   pageStatus: null,
   plansList: null,
   flashMessage: null,
@@ -78,6 +80,8 @@ document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
   ui.startButton = document.getElementById("startPlanningBtn");
+  ui.importButton = document.getElementById("importPlanBtn");
+  ui.importInput = document.getElementById("importPlanInput");
   ui.pageStatus = document.getElementById("pageStatus");
   ui.plansList = document.getElementById("plansList");
   ui.flashMessage = document.getElementById("flashMessage");
@@ -89,6 +93,8 @@ async function init() {
   ui.resetBindingsBtn = document.getElementById("resetBindingsBtn");
 
   ui.startButton.addEventListener("click", onStartPlanning);
+  ui.importButton.addEventListener("click", onImportPlanClick);
+  ui.importInput.addEventListener("change", onImportPlanFileSelected);
   ui.customizeBindingsBtn.addEventListener("click", () => {
     const nextHidden = !ui.bindingsPanel.hidden;
     ui.bindingsPanel.hidden = nextHidden;
@@ -264,6 +270,187 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function createRuntimeId(prefix) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeId(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function normalizeIsoDate(value, fallbackIso) {
+  const parsed = Date.parse(value);
+  if (Number.isFinite(parsed)) {
+    return new Date(parsed).toISOString();
+  }
+  return fallbackIso;
+}
+
+function sanitizePoint(point) {
+  if (!point || typeof point !== "object") {
+    return null;
+  }
+
+  const x = Number(point.x);
+  const y = Number(point.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+
+  return { x, y };
+}
+
+function sanitizeLabelBox(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const offsetX = Number(source.offsetX);
+  const offsetY = Number(source.offsetY);
+  const width = Number(source.width);
+  const height = Number(source.height);
+
+  return {
+    offsetX: Number.isFinite(offsetX) ? offsetX : 10,
+    offsetY: Number.isFinite(offsetY) ? offsetY : -28,
+    width: Number.isFinite(width) ? Math.max(48, Math.min(360, width)) : 96,
+    height: Number.isFinite(height) ? Math.max(20, Math.min(120, height)) : 24
+  };
+}
+
+function sanitizeShape(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const type = typeof raw.type === "string" ? raw.type : "";
+  if (type !== "line" && type !== "rectangle" && type !== "polygon" && type !== "label") {
+    return null;
+  }
+
+  const id = normalizeId(raw.id) || createRuntimeId("shape");
+
+  if (type === "label") {
+    const point = sanitizePoint(raw.point);
+    if (!point) {
+      return null;
+    }
+    return {
+      id,
+      type,
+      point,
+      text: typeof raw.text === "string" ? raw.text : "",
+      labelBox: sanitizeLabelBox(raw.labelBox)
+    };
+  }
+
+  const points = Array.isArray(raw.points) ? raw.points.map(sanitizePoint).filter(Boolean) : [];
+  if ((type === "line" && points.length < 2) || (type !== "line" && points.length < 3)) {
+    return null;
+  }
+
+  const normalizedPoints = type === "line" ? points.slice(0, 2) : points;
+  const edgeCount = type === "line" ? 1 : normalizedPoints.length;
+  const measurements = raw.measurements && typeof raw.measurements === "object"
+    ? raw.measurements
+    : {};
+  const edgeVisibilitySource = Array.isArray(measurements.edgeVisibility)
+    ? measurements.edgeVisibility
+    : [];
+
+  const normalized = {
+    id,
+    type,
+    points: normalizedPoints,
+    measurements: {
+      edgeVisibility: Array.from({ length: edgeCount }, (_, index) =>
+        edgeVisibilitySource[index] !== false
+      )
+    }
+  };
+
+  if (typeof raw.label === "string") {
+    normalized.label = raw.label;
+  }
+
+  if (type === "line") {
+    if (typeof raw.connectionId === "string" && raw.connectionId.trim()) {
+      normalized.connectionId = raw.connectionId.trim();
+    }
+  } else {
+    const openEdgesSource = Array.isArray(measurements.openEdges) ? measurements.openEdges : [];
+    normalized.measurements.openEdges = Array.from(
+      { length: edgeCount },
+      (_, index) => openEdgesSource[index] === true
+    );
+    normalized.measurements.areaVisible =
+      typeof measurements.areaVisible === "boolean" ? measurements.areaVisible : true;
+  }
+
+  return normalized;
+}
+
+function sanitizePlanForImport(rawPlan, usedIds) {
+  if (!rawPlan || typeof rawPlan !== "object") {
+    return null;
+  }
+
+  let id = normalizeId(rawPlan.id);
+  if (!id) {
+    do {
+      id = createRuntimeId("plan");
+    } while (usedIds && usedIds.has(id));
+  }
+
+  if (usedIds) {
+    usedIds.add(id);
+  }
+
+  const nowIso = new Date().toISOString();
+  const source = rawPlan.source && typeof rawPlan.source === "object" ? rawPlan.source : {};
+  const sourceLat = Number(source.lat);
+  const sourceLng = Number(source.lng);
+  const sourceZoom = Number(source.zoom);
+  const sourceViewportWidth = Number(source.viewportWidth);
+  const sourceViewportHeight = Number(source.viewportHeight);
+
+  const shapes = Array.isArray(rawPlan.shapes)
+    ? rawPlan.shapes.map(sanitizeShape).filter(Boolean)
+    : [];
+
+  return {
+    id,
+    name:
+      typeof rawPlan.name === "string" && rawPlan.name.trim()
+        ? rawPlan.name.trim()
+        : "Untitled Plan",
+    createdAt: normalizeIsoDate(rawPlan.createdAt, nowIso),
+    updatedAt: normalizeIsoDate(rawPlan.updatedAt, nowIso),
+    source: {
+      url: typeof source.url === "string" ? source.url : "",
+      lat: Number.isFinite(sourceLat) ? sourceLat : 0,
+      lng: Number.isFinite(sourceLng) ? sourceLng : 0,
+      zoom: Number.isFinite(sourceZoom) ? sourceZoom : 0,
+      viewportWidth: Number.isFinite(sourceViewportWidth) ? sourceViewportWidth : 0,
+      viewportHeight: Number.isFinite(sourceViewportHeight) ? sourceViewportHeight : 0
+    },
+    shapes
+  };
+}
+
+function extractImportPlans(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (payload && typeof payload === "object" && Array.isArray(payload.plans)) {
+    return payload.plans;
+  }
+
+  if (payload && typeof payload === "object") {
+    return [payload];
+  }
+
+  return [];
+}
+
 function metersToApproxZoom(lat, meters, viewportHeight) {
   const safeMeters = Number(meters);
   if (!Number.isFinite(safeMeters) || safeMeters <= 0) {
@@ -400,27 +587,28 @@ async function refreshPlansList() {
   renderPlans(sortedPlans);
 }
 
-async function loadPlans() {
+async function loadPlansRaw() {
   try {
     const data = await chrome.storage.local.get(STORAGE_KEY);
-    if (!Array.isArray(data[STORAGE_KEY])) {
-      return [];
-    }
-
-    return data[STORAGE_KEY]
-      .filter((plan) => plan && typeof plan === "object" && typeof plan.id === "string")
-      .map((plan) => ({
-        ...plan,
-        name: typeof plan.name === "string" && plan.name.trim() ? plan.name : "Untitled Plan",
-        shapes: Array.isArray(plan.shapes) ? plan.shapes : [],
-        updatedAt:
-          typeof plan.updatedAt === "string" && !Number.isNaN(Date.parse(plan.updatedAt))
-            ? plan.updatedAt
-            : plan.createdAt || new Date().toISOString()
-      }));
+    return Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY] : [];
   } catch (_error) {
     return [];
   }
+}
+
+async function loadPlans() {
+  const plans = await loadPlansRaw();
+  return plans
+    .filter((plan) => plan && typeof plan === "object" && typeof plan.id === "string")
+    .map((plan) => ({
+      ...plan,
+      name: typeof plan.name === "string" && plan.name.trim() ? plan.name : "Untitled Plan",
+      shapes: Array.isArray(plan.shapes) ? plan.shapes : [],
+      updatedAt:
+        typeof plan.updatedAt === "string" && !Number.isNaN(Date.parse(plan.updatedAt))
+          ? plan.updatedAt
+          : plan.createdAt || new Date().toISOString()
+    }));
 }
 
 async function savePlans(plans) {
@@ -700,6 +888,98 @@ async function onDeletePlan(planId) {
   await savePlans(next);
   setFlash("Plan deleted.");
   await refreshPlansList();
+}
+
+function onImportPlanClick() {
+  if (!ui.importInput) {
+    return;
+  }
+  ui.importInput.value = "";
+  ui.importInput.click();
+}
+
+async function onImportPlanFileSelected(event) {
+  const input = event && event.target ? event.target : null;
+  const file = input && input.files && input.files[0] ? input.files[0] : null;
+  if (!file) {
+    return;
+  }
+
+  try {
+    const rawText = await file.text();
+    if (!rawText || !rawText.trim()) {
+      setFlash("Import failed: file is empty.");
+      return;
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch (_error) {
+      setFlash("Import failed: invalid JSON.");
+      return;
+    }
+
+    const candidates = extractImportPlans(parsed);
+    if (!candidates.length) {
+      setFlash("Import failed: no plans found in this file.");
+      return;
+    }
+
+    const existingPlans = await loadPlansRaw();
+    const usedIds = new Set(
+      existingPlans
+        .map((plan) => (plan && typeof plan.id === "string" ? plan.id : ""))
+        .filter(Boolean)
+    );
+    const mergedById = new Map();
+    existingPlans.forEach((plan) => {
+      if (plan && typeof plan === "object" && typeof plan.id === "string" && plan.id) {
+        mergedById.set(plan.id, plan);
+      }
+    });
+
+    let added = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    candidates.forEach((candidate) => {
+      const normalized = sanitizePlanForImport(candidate, usedIds);
+      if (!normalized) {
+        skipped += 1;
+        return;
+      }
+
+      if (mergedById.has(normalized.id)) {
+        updated += 1;
+      } else {
+        added += 1;
+      }
+      mergedById.set(normalized.id, normalized);
+    });
+
+    if (added === 0 && updated === 0) {
+      setFlash("Import failed: no valid plans could be imported.");
+      return;
+    }
+
+    await savePlans(Array.from(mergedById.values()));
+    await refreshPlansList();
+
+    const details = [];
+    details.push(`${added} added`);
+    details.push(`${updated} updated`);
+    if (skipped > 0) {
+      details.push(`${skipped} skipped`);
+    }
+    setFlash(`Import complete: ${details.join(", ")}.`);
+  } catch (error) {
+    setFlash(`Import failed: ${error && error.message ? error.message : "unknown error"}`);
+  } finally {
+    if (input) {
+      input.value = "";
+    }
+  }
 }
 
 function onExportPlan(plan) {

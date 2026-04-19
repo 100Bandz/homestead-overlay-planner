@@ -33,10 +33,12 @@ body {
 
 .primary-actions {
   margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .primary-btn {
-  width: 100%;
   border: 1px solid #2f7b58;
   border-radius: 10px;
   padding: 10px 12px;
@@ -48,6 +50,26 @@ body {
 }
 
 .primary-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.secondary-btn {
+  border: 1px solid #3b6f63;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #22463e;
+  background: #f6fffc;
+  cursor: pointer;
+}
+
+.secondary-btn:hover {
+  background: #ebfaf5;
+}
+
+.secondary-btn:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
