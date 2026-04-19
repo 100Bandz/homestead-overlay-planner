@@ -117,6 +117,16 @@ Copy/Paste shortcuts are also available while not typing:
   - `Save`
   - `Exit`
 
+## Store Assets
+
+- Store listing images live in `store-assets/`.
+- Current screenshot (`store-assets/screenshot.png`) meets the minimum screenshot requirement (`>=1280x800`).
+- Validate all listing assets before publishing:
+
+```bash
+./scripts/validate-store-assets.sh
+```
+
 ## Known Limitations
 
 - URL parsing depends on Google Maps URL patterns containing `@lat,lng,zoom` values (supports `z` and meter-based `m` zoom units). Unsupported URL states show a non-blocking message.
