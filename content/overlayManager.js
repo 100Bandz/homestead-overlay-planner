@@ -1399,7 +1399,36 @@
       const shapes = this._cloneShapes(this.shapes);
       const mutable = shapes[shapeIndex];
 
-      if (mutable.type === "line") {
+      if (mutable.type === "rectangle") {
+        const frame = this._rectangleFrame(mutable.points);
+        if (!frame) {
+          return false;
+        }
+
+        let widthCanonical = frame.widthCanonical;
+        let heightCanonical = frame.heightCanonical;
+
+        if (edgeIndex % 2 === 0) {
+          widthCanonical = frame.widthCanonical * ratio;
+        } else {
+          heightCanonical = frame.heightCanonical * ratio;
+        }
+
+        if (
+          !Number.isFinite(widthCanonical) ||
+          !Number.isFinite(heightCanonical) ||
+          widthCanonical <= 0 ||
+          heightCanonical <= 0
+        ) {
+          return false;
+        }
+
+        mutable.points = this._buildRectanglePointsFromFrame(
+          frame,
+          widthCanonical,
+          heightCanonical
+        );
+      } else if (mutable.type === "line") {
         mutable.points[1] = this._translatedPoint(mutable.points[1], deltaX, deltaY);
       } else {
         const endIndex = endpoints.endIndex;
