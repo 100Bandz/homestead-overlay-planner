@@ -120,7 +120,9 @@ Copy/Paste shortcuts are also available while not typing:
 ## Store Assets
 
 - Store listing images live in `store-assets/`.
-- Current screenshot (`store-assets/screenshot.png`) meets the minimum screenshot requirement (`>=1280x800`).
+- Upload screenshots using exact dimensions: `1280x800` or `640x400`.
+- If using PNG screenshots, they must not have an alpha channel.
+- Current screenshot (`store-assets/screenshot.png`) is compliant (`1280x800`, PNG, no alpha).
 - Validate all listing assets before publishing:
 
 ```bash
