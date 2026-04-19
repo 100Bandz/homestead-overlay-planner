@@ -264,6 +264,40 @@
   cursor: crosshair;
 }
 
+.hop-rotate-guide {
+  stroke: rgba(122, 212, 255, 0.85);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.hop-rotate-handle-hit {
+  fill: rgba(0, 0, 0, 0.001);
+  stroke: transparent;
+  cursor: grab;
+}
+
+.hop-rotate-handle-hit:active {
+  cursor: grabbing;
+}
+
+.hop-rotate-handle {
+  fill: rgba(18, 30, 44, 0.94);
+  stroke: rgba(158, 231, 255, 0.95);
+  stroke-width: 1.4;
+  pointer-events: none;
+}
+
+.hop-rotate-handle-icon {
+  fill: #ddf7ff;
+  font-size: 10px;
+  font-weight: 800;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  pointer-events: none;
+  user-select: none;
+}
+
 .hop-area-box {
   fill: rgba(20, 30, 39, 0.9);
   stroke: rgba(189, 236, 255, 0.8);

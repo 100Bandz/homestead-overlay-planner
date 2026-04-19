@@ -57,6 +57,7 @@
       this.draggingShape = null;
       this.draggingLabelControl = null;
       this.draggingVertex = null;
+      this.draggingRotate = null;
       this.connectionDraft = null;
       this.lastEdgeMeasurementTap = null;
       this.boundPointerDown = this._onPointerDown.bind(this);
@@ -100,6 +101,7 @@
       this.draggingShape = null;
       this.draggingLabelControl = null;
       this.draggingVertex = null;
+      this.draggingRotate = null;
       this.connectionDraft = null;
       this.lastEdgeMeasurementTap = null;
       this.requestRender();
@@ -451,8 +453,151 @@
       };
     }
 
+    _findRotateHandleFromTarget(target) {
+      const elementTarget = this._elementTarget(target);
+      const node =
+        elementTarget && elementTarget.closest
+          ? elementTarget.closest("[data-rotate-handle='true']")
+          : null;
+      if (!node) {
+        return null;
+      }
+
+      const shapeId = node.getAttribute("data-shape-id");
+      if (!shapeId) {
+        return null;
+      }
+
+      return { shapeId };
+    }
+
     _normalizeY(value) {
       return Math.max(0, Math.min(WORLD_SIZE, value));
+    }
+
+    _averageCanonicalPoints(points) {
+      if (!Array.isArray(points) || !points.length) {
+        return null;
+      }
+
+      const anchorX = points[0].x;
+      let sumX = anchorX;
+      let sumY = Number(points[0].y) || 0;
+
+      for (let i = 1; i < points.length; i += 1) {
+        const point = points[i];
+        sumX += anchorX + HOP.projection.wrapDeltaX(point.x - anchorX);
+        sumY += Number(point.y) || 0;
+      }
+
+      return {
+        x: HOP.projection.normalizeCanonicalX(sumX / points.length),
+        y: this._normalizeY(sumY / points.length)
+      };
+    }
+
+    _shapeRotationPivot(shape) {
+      if (!shape) {
+        return null;
+      }
+
+      if (shape.type === "label" && shape.point) {
+        return {
+          x: HOP.projection.normalizeCanonicalX(shape.point.x),
+          y: this._normalizeY(shape.point.y)
+        };
+      }
+
+      if (!Array.isArray(shape.points) || shape.points.length === 0) {
+        return null;
+      }
+
+      if (shape.type === "line" && shape.points.length >= 2) {
+        const a = shape.points[0];
+        const b = shape.points[1];
+        const bUnwrappedX = a.x + HOP.projection.wrapDeltaX(b.x - a.x);
+        return {
+          x: HOP.projection.normalizeCanonicalX((a.x + bUnwrappedX) / 2),
+          y: this._normalizeY((a.y + b.y) / 2)
+        };
+      }
+
+      return this._averageCanonicalPoints(shape.points);
+    }
+
+    _rotationPivotForShapeIds(shapeIds, startShapesById) {
+      if (!Array.isArray(shapeIds) || shapeIds.length === 0) {
+        return null;
+      }
+
+      if (shapeIds.length === 1) {
+        const onlyShape = startShapesById ? startShapesById[shapeIds[0]] : null;
+        return this._shapeRotationPivot(onlyShape);
+      }
+
+      const aggregatePoints = [];
+      shapeIds.forEach((shapeId) => {
+        const shape = startShapesById ? startShapesById[shapeId] : null;
+        if (!shape) {
+          return;
+        }
+        if (shape.type === "label" && shape.point) {
+          aggregatePoints.push(shape.point);
+          return;
+        }
+        if (Array.isArray(shape.points)) {
+          shape.points.forEach((point) => aggregatePoints.push(point));
+        }
+      });
+
+      return this._averageCanonicalPoints(aggregatePoints);
+    }
+
+    _normalizeAngleDelta(delta) {
+      if (!Number.isFinite(delta)) {
+        return 0;
+      }
+      let normalized = delta;
+      while (normalized > Math.PI) {
+        normalized -= Math.PI * 2;
+      }
+      while (normalized < -Math.PI) {
+        normalized += Math.PI * 2;
+      }
+      return normalized;
+    }
+
+    _rotateShape(shape, pivot, angleDelta) {
+      if (!shape || !pivot || !Number.isFinite(angleDelta)) {
+        return shape;
+      }
+
+      const cos = Math.cos(angleDelta);
+      const sin = Math.sin(angleDelta);
+      const rotatePoint = (point) => {
+        const dx = HOP.projection.wrapDeltaX(point.x - pivot.x);
+        const dy = point.y - pivot.y;
+        return {
+          x: HOP.projection.normalizeCanonicalX(pivot.x + dx * cos - dy * sin),
+          y: this._normalizeY(pivot.y + dx * sin + dy * cos)
+        };
+      };
+
+      if (shape.type === "label" && shape.point) {
+        return {
+          ...shape,
+          point: rotatePoint(shape.point)
+        };
+      }
+
+      if (Array.isArray(shape.points) && shape.points.length) {
+        return {
+          ...shape,
+          points: shape.points.map(rotatePoint)
+        };
+      }
+
+      return shape;
     }
 
     _translateShape(shape, dx, dy) {
@@ -733,6 +878,51 @@
           return;
         }
 
+        const rotateHandle = this._findRotateHandleFromTarget(event.target);
+        if (rotateHandle && point) {
+          event.preventDefault();
+          event.stopPropagation();
+          const shape = this._findShapeById(rotateHandle.shapeId);
+          if (shape) {
+            this.selection.select(shape.id);
+            this.clearSelectedEdge();
+            this.setEditShapeId(null);
+
+            const groupShapeIds = this._dragGroupIdsForShape(shape);
+            const startShapesById = {};
+            const shapes = this.getShapes();
+            groupShapeIds.forEach((id) => {
+              const member = shapes.find((candidate) => candidate.id === id);
+              if (member) {
+                startShapesById[id] = JSON.parse(JSON.stringify(member));
+              }
+            });
+
+            const pivot = this._rotationPivotForShapeIds(groupShapeIds, startShapesById);
+            const view = this.getView();
+            if (pivot && view) {
+              const pivotScreen = HOP.projection.canonicalToScreen(pivot, view);
+              const cursorScreen = this._screenPointFromEvent(event);
+              this.draggingRotate = {
+                pointerId: event.pointerId,
+                shapeId: shape.id,
+                groupShapeIds,
+                startShapesById,
+                startShapesSnapshot: this._cloneShapes(this.getShapes()),
+                pivot,
+                startAngle: Math.atan2(
+                  cursorScreen.y - pivotScreen.y,
+                  cursorScreen.x - pivotScreen.x
+                ),
+                moved: false
+              };
+              this.svg.setPointerCapture(event.pointerId);
+              this.requestRender();
+            }
+          }
+          return;
+        }
+
         const edgeToggleTarget = this.isLengthPickMode()
           ? this._findEdgeToggleFromTarget(event.target)
           : null;
@@ -856,6 +1046,52 @@
       }
 
       const tool = this.getTool();
+
+      if (
+        tool === HOP.constants.TOOL.SELECT &&
+        this.draggingRotate &&
+        this.draggingRotate.pointerId === event.pointerId
+      ) {
+        const view = this.getView();
+        if (!view) {
+          return;
+        }
+
+        const pivotScreen = HOP.projection.canonicalToScreen(this.draggingRotate.pivot, view);
+        const currentScreen = this._screenPointFromEvent(event);
+        const currentAngle = Math.atan2(
+          currentScreen.y - pivotScreen.y,
+          currentScreen.x - pivotScreen.x
+        );
+        const angleDelta = this._normalizeAngleDelta(currentAngle - this.draggingRotate.startAngle);
+
+        if (Math.abs(angleDelta) > 0.003) {
+          this.draggingRotate.moved = true;
+        }
+
+        const shapes = this.getShapes().slice();
+        const groupIds = Array.isArray(this.draggingRotate.groupShapeIds)
+          ? this.draggingRotate.groupShapeIds
+          : [this.draggingRotate.shapeId];
+        let changed = false;
+
+        groupIds.forEach((shapeId) => {
+          const index = shapes.findIndex((shape) => shape.id === shapeId);
+          const startShape = this.draggingRotate.startShapesById
+            ? this.draggingRotate.startShapesById[shapeId]
+            : null;
+          if (index >= 0 && startShape) {
+            shapes[index] = this._rotateShape(startShape, this.draggingRotate.pivot, angleDelta);
+            changed = true;
+          }
+        });
+
+        if (changed) {
+          this.setShapes(shapes, { skipRender: true });
+          this.requestRender();
+        }
+        return;
+      }
 
       if (
         tool === HOP.constants.TOOL.SELECT &&
@@ -990,6 +1226,24 @@
 
     _onPointerUp(event) {
       const tool = this.getTool();
+
+      if (
+        tool === HOP.constants.TOOL.SELECT &&
+        this.draggingRotate &&
+        this.draggingRotate.pointerId === event.pointerId
+      ) {
+        this.svg.releasePointerCapture(event.pointerId);
+        if (this.draggingRotate.moved) {
+          this.setShapes(this.getShapes(), {
+            recordHistory: true,
+            historySnapshot: this.draggingRotate.startShapesSnapshot,
+            skipRender: true
+          });
+        }
+        this.draggingRotate = null;
+        this.requestRender();
+        return;
+      }
 
       if (
         tool === HOP.constants.TOOL.SELECT &&

@@ -513,6 +513,98 @@
       });
     }
 
+    _createRotateHandle(shapeId, pivot, handle) {
+      const group = createSvgElement("g", {
+        class: "hop-rotate-handle-group"
+      });
+
+      group.appendChild(
+        createSvgElement("line", {
+          x1: pivot.x,
+          y1: pivot.y,
+          x2: handle.x,
+          y2: handle.y,
+          class: "hop-rotate-guide"
+        })
+      );
+
+      group.appendChild(
+        createSvgElement("circle", {
+          cx: handle.x,
+          cy: handle.y,
+          r: 12,
+          class: "hop-rotate-handle-hit",
+          "data-rotate-handle": "true",
+          "data-shape-id": shapeId
+        })
+      );
+
+      group.appendChild(
+        createSvgElement("circle", {
+          cx: handle.x,
+          cy: handle.y,
+          r: 8,
+          class: "hop-rotate-handle"
+        })
+      );
+
+      const icon = createSvgElement("text", {
+        x: handle.x,
+        y: handle.y + 3,
+        class: "hop-rotate-handle-icon",
+        "text-anchor": "middle"
+      });
+      icon.textContent = "R";
+      group.appendChild(icon);
+
+      return group;
+    }
+
+    _lineRotateHandlePosition(a, b) {
+      const pivot = {
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2
+      };
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+
+      let nx = -dy / len;
+      let ny = dx / len;
+      if (ny > 0 || (Math.abs(ny) < 0.001 && nx < 0)) {
+        nx = -nx;
+        ny = -ny;
+      }
+
+      return {
+        pivot,
+        handle: {
+          x: pivot.x + nx * 36,
+          y: pivot.y + ny * 36
+        }
+      };
+    }
+
+    _polygonRotateHandlePosition(screenPoints) {
+      const pivot = this._averagePoint(screenPoints);
+      const minY = screenPoints.reduce((best, point) => Math.min(best, point.y), Infinity);
+      let handleY = minY - 30;
+      if (handleY < 14) {
+        handleY = minY + 30;
+      }
+      if (Math.abs(handleY - pivot.y) < 18) {
+        handleY = pivot.y - 30;
+      }
+
+      return {
+        pivot,
+        handle: {
+          x: pivot.x,
+          y: handleY
+        }
+      };
+    }
+
     _renderDerivedLineLoopAreas(shapes, view, settings) {
       if (!settings.showAllAreas) {
         return null;
@@ -756,6 +848,13 @@
           shapeGroup.appendChild(this._createVertexHandle(b, shape.id, 1));
         }
 
+        if (isSelected && settings.activeTool === HOP.constants.TOOL.SELECT) {
+          const rotateLayout = this._lineRotateHandlePosition(a, b);
+          shapeGroup.appendChild(
+            this._createRotateHandle(shape.id, rotateLayout.pivot, rotateLayout.handle)
+          );
+        }
+
         return { shapeGroup, measurementGroup };
       }
 
@@ -869,6 +968,13 @@
           for (let i = 0; i < screenPoints.length; i += 1) {
             shapeGroup.appendChild(this._createVertexHandle(screenPoints[i], shape.id, i));
           }
+        }
+
+        if (isSelected && settings.activeTool === HOP.constants.TOOL.SELECT) {
+          const rotateLayout = this._polygonRotateHandlePosition(screenPoints);
+          shapeGroup.appendChild(
+            this._createRotateHandle(shape.id, rotateLayout.pivot, rotateLayout.handle)
+          );
         }
 
         return { shapeGroup, measurementGroup };
