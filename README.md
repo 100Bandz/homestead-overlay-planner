@@ -52,6 +52,12 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 
 `Pan Mode` is the default tool when the overlay starts or when a plan is loaded.
 
+## Shape Navigator
+
+- A collapsible **Shapes** panel appears in-map (top-left) while planning is active.
+- Each saved shape/line/label appears with a **Find** button.
+- **Find** saves the current plan, navigates Google Maps to that shape's location, and reloads the plan with that shape selected.
+
 ## Editing and Interaction
 
 - `Select` mode:

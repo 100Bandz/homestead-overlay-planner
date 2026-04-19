@@ -76,13 +76,20 @@ async function ensurePlannerInjected(tabId) {
   throw new Error("Planner content script did not initialize.");
 }
 
-async function runSeamlessPlanLoad(payload) {
-  const tabId = Number(payload && payload.tabId);
+async function runSeamlessPlanLoad(payload, senderTabId) {
+  const requestedTabId = Number(payload && payload.tabId);
+  const tabId = Number.isInteger(requestedTabId) && requestedTabId > 0
+    ? requestedTabId
+    : Number(senderTabId);
   const planId = payload && payload.planId;
   const targetUrl = payload && typeof payload.targetUrl === "string" ? payload.targetUrl : "";
   const keyBindings = payload && payload.keyBindings && typeof payload.keyBindings === "object"
     ? payload.keyBindings
     : undefined;
+  const focusShapeId =
+    payload && typeof payload.focusShapeId === "string" && payload.focusShapeId.trim()
+      ? payload.focusShapeId.trim()
+      : "";
 
   if (!Number.isInteger(tabId) || tabId <= 0) {
     throw new Error("Missing tab id.");
@@ -108,7 +115,8 @@ async function runSeamlessPlanLoad(payload) {
     planId,
     options: {
       skipNavigation: true,
-      keyBindings
+      keyBindings,
+      focusShapeId
     }
   });
 
@@ -120,7 +128,7 @@ async function runSeamlessPlanLoad(payload) {
   return response;
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== "object") {
     return;
   }
@@ -133,7 +141,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "HOP_SERVICE_LOAD_PLAN") {
     (async () => {
       try {
-        const result = await runSeamlessPlanLoad(message);
+        const senderTabId =
+          sender && sender.tab && Number.isInteger(sender.tab.id)
+            ? sender.tab.id
+            : null;
+        const result = await runSeamlessPlanLoad(message, senderTabId);
         sendResponse({ ok: true, result });
       } catch (error) {
         sendResponse({

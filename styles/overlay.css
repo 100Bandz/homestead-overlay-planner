@@ -102,6 +102,125 @@
   cursor: pointer;
 }
 
+.hop-navigator {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  width: min(320px, calc(100vw - 28px));
+  max-height: min(62vh, 520px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(22, 28, 31, 0.86);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  pointer-events: auto;
+}
+
+.hop-navigator-toggle {
+  appearance: none;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: #eef7f2;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: left;
+  padding: 10px 12px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.hop-navigator-list {
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hop-navigator.is-collapsed .hop-navigator-toggle {
+  border-bottom: 0;
+}
+
+.hop-navigator.is-collapsed .hop-navigator-list {
+  display: none;
+}
+
+.hop-navigator.is-dragging {
+  user-select: none;
+}
+
+.hop-navigator.is-dragging .hop-navigator-toggle {
+  cursor: grabbing;
+}
+
+.hop-navigator-empty {
+  color: rgba(229, 241, 235, 0.8);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px;
+}
+
+.hop-navigator-item {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hop-navigator-item.is-selected {
+  border-color: rgba(255, 205, 56, 0.92);
+  background: rgba(255, 205, 56, 0.18);
+}
+
+.hop-navigator-summary {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hop-navigator-type {
+  color: rgba(186, 239, 210, 0.9);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.hop-navigator-name {
+  color: #eef7f2;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hop-navigator-find {
+  appearance: none;
+  border: 1px solid rgba(122, 237, 173, 0.62);
+  border-radius: 7px;
+  background: rgba(18, 158, 92, 0.25);
+  color: #eafff5;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+
+.hop-navigator-find:hover {
+  background: rgba(18, 158, 92, 0.38);
+}
+
 .hop-shape-path {
   stroke: rgba(24, 195, 124, 0.98);
   stroke-width: 2.2;
@@ -331,5 +450,12 @@
 
   .hop-status {
     bottom: 180px;
+  }
+
+  .hop-navigator {
+    top: 10px;
+    left: 10px;
+    width: min(300px, calc(100vw - 20px));
+    max-height: min(52vh, 420px);
   }
 }

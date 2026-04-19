@@ -30,6 +30,9 @@
         showAllAreas: true,
         sideToggleMode: false
       };
+      this.navigatorBusyShapeId = null;
+      this.navigatorUiStateStorageKey = "homesteadOverlayPlannerNavigatorUiStateV1";
+      this.suspendNavigatorUiStatePersist = false;
       this.boundResize = this._onResize.bind(this);
     }
 
@@ -98,7 +101,14 @@
       }
 
       this.ui = new HOP.OverlayUI();
-      this.ui.mount(this._handleToolbarAction.bind(this));
+      this.suspendNavigatorUiStatePersist = true;
+      this.ui.mount(
+        this._handleToolbarAction.bind(this),
+        this._handleNavigatorAction.bind(this),
+        this._handleNavigatorUiStateChanged.bind(this)
+      );
+      await this._restoreNavigatorUiState();
+      this.suspendNavigatorUiStatePersist = false;
       this.renderer = new HOP.ShapeRenderer(this.ui.getSvg());
 
       this.drawingTools = new HOP.DrawingTools({
@@ -269,12 +279,33 @@
       this.drawingTools.cancelCurrentDrawing();
       this._setTool(HOP.constants.TOOL.PAN);
 
+      if (
+        typeof opts.focusShapeId === "string" &&
+        this.shapes.some((shape) => shape.id === opts.focusShapeId)
+      ) {
+        this.selection.select(opts.focusShapeId);
+      }
+
       const viewport = this._getMapViewportRect();
       this.currentMapState = HOP.MapState.parseMapUrl(window.location.href, {
         viewportHeight: viewport.height
       });
 
-      this.ui.showStatus(`Loaded plan "${plan.name}".`);
+      const focusedShape =
+        typeof opts.focusShapeId === "string"
+          ? this.shapes.find((shape) => shape.id === opts.focusShapeId)
+          : null;
+      const focusedShapeIndex = focusedShape
+        ? this.shapes.findIndex((shape) => shape.id === focusedShape.id)
+        : -1;
+
+      if (focusedShape) {
+        this.ui.showStatus(
+          `Loaded plan "${plan.name}". Focused on ${this._shapeNavigatorName(focusedShape, focusedShapeIndex)}.`
+        );
+      } else {
+        this.ui.showStatus(`Loaded plan "${plan.name}".`);
+      }
       this._render();
 
       return {
@@ -413,6 +444,263 @@
 
     _onResize() {
       this._render();
+    }
+
+    _sanitizeNavigatorUiState(raw) {
+      if (!raw || typeof raw !== "object") {
+        return null;
+      }
+
+      const left = Number(raw.left);
+      const top = Number(raw.top);
+
+      return {
+        collapsed: raw.collapsed === true,
+        left: Number.isFinite(left) ? left : null,
+        top: Number.isFinite(top) ? top : null
+      };
+    }
+
+    async _persistNavigatorUiState(state) {
+      const sanitized = this._sanitizeNavigatorUiState(state);
+      if (!sanitized) {
+        return;
+      }
+
+      try {
+        await chrome.storage.local.set({
+          [this.navigatorUiStateStorageKey]: sanitized
+        });
+      } catch (_error) {
+        // Ignore UI state storage failures.
+      }
+    }
+
+    async _restoreNavigatorUiState() {
+      if (!this.ui) {
+        return;
+      }
+
+      try {
+        const payload = await chrome.storage.local.get(this.navigatorUiStateStorageKey);
+        const state = this._sanitizeNavigatorUiState(payload[this.navigatorUiStateStorageKey]);
+        if (state) {
+          this.ui.applyNavigatorState(state);
+        }
+      } catch (_error) {
+        // Ignore UI state restore failures.
+      }
+    }
+
+    _handleNavigatorUiStateChanged(state) {
+      if (this.suspendNavigatorUiStatePersist) {
+        return;
+      }
+
+      void this._persistNavigatorUiState(state);
+    }
+
+    _shapeTypeLabel(shapeType) {
+      if (shapeType === "line") {
+        return "Line";
+      }
+      if (shapeType === "rectangle") {
+        return "Rectangle";
+      }
+      if (shapeType === "polygon") {
+        return "Polygon";
+      }
+      if (shapeType === "label") {
+        return "Label";
+      }
+      return "Shape";
+    }
+
+    _shapeNavigatorName(shape, index) {
+      const position = Number.isInteger(index) && index >= 0 ? index + 1 : 1;
+      const typeLabel = this._shapeTypeLabel(shape && shape.type);
+
+      if (!shape || typeof shape !== "object") {
+        return `${typeLabel} ${position}`;
+      }
+
+      if (shape.type === "label") {
+        const text = typeof shape.text === "string" ? shape.text.trim() : "";
+        return text || `Label ${position}`;
+      }
+
+      const custom = typeof shape.label === "string" ? shape.label.trim() : "";
+      if (custom) {
+        return custom;
+      }
+
+      return `${typeLabel} ${position}`;
+    }
+
+    _buildNavigatorItems() {
+      return this.shapes.map((shape, index) => ({
+        id: shape.id,
+        typeLabel: this._shapeTypeLabel(shape.type),
+        name: this._shapeNavigatorName(shape, index)
+      }));
+    }
+
+    _shapePoints(shape) {
+      if (!shape || typeof shape !== "object") {
+        return [];
+      }
+
+      if (shape.type === "label") {
+        if (
+          shape.point &&
+          Number.isFinite(shape.point.x) &&
+          Number.isFinite(shape.point.y)
+        ) {
+          return [{ x: Number(shape.point.x), y: Number(shape.point.y) }];
+        }
+        return [];
+      }
+
+      if (!Array.isArray(shape.points)) {
+        return [];
+      }
+
+      return shape.points
+        .filter(
+          (point) =>
+            point &&
+            Number.isFinite(point.x) &&
+            Number.isFinite(point.y)
+        )
+        .map((point) => ({
+          x: Number(point.x),
+          y: Number(point.y)
+        }));
+    }
+
+    _shapeBounds(points) {
+      const safePoints = Array.isArray(points) ? points : [];
+      if (!safePoints.length) {
+        return null;
+      }
+
+      const baseX = safePoints[0].x;
+      const unwrapped = safePoints.map((point) => ({
+        x: baseX + HOP.projection.wrapDeltaX(point.x - baseX),
+        y: point.y
+      }));
+
+      const minX = Math.min(...unwrapped.map((point) => point.x));
+      const maxX = Math.max(...unwrapped.map((point) => point.x));
+      const minY = Math.min(...unwrapped.map((point) => point.y));
+      const maxY = Math.max(...unwrapped.map((point) => point.y));
+      const worldSize =
+        HOP.constants.TILE_SIZE * Math.pow(2, HOP.constants.CANONICAL_ZOOM);
+
+      return {
+        center: {
+          x: HOP.projection.normalizeCanonicalX((minX + maxX) / 2),
+          y: Math.max(0, Math.min((minY + maxY) / 2, worldSize))
+        },
+        spanX: Math.max(0, maxX - minX),
+        spanY: Math.max(0, maxY - minY)
+      };
+    }
+
+    _shapeFocusZoom(bounds, viewport) {
+      if (!bounds || !viewport) {
+        return this.currentMapState ? this.currentMapState.zoom : 20;
+      }
+
+      const horizontalPadding = 120;
+      const verticalPadding = 120;
+      const viewportWidth = Number.isFinite(Number(viewport.width))
+        ? Number(viewport.width)
+        : (window.innerWidth || 1200);
+      const viewportHeight = Number.isFinite(Number(viewport.height))
+        ? Number(viewport.height)
+        : (window.innerHeight || 900);
+      const usableWidth = Math.max(120, viewportWidth - horizontalPadding);
+      const usableHeight = Math.max(120, viewportHeight - verticalPadding);
+      const minSpanCanonical = 256;
+
+      const spanX = Math.max(bounds.spanX, minSpanCanonical);
+      const spanY = Math.max(bounds.spanY, minSpanCanonical);
+      const scale = Math.max(spanX / usableWidth, spanY / usableHeight, 1e-9);
+      const zoom = HOP.constants.CANONICAL_ZOOM - Math.log2(scale);
+
+      return Math.max(1, Math.min(22, zoom));
+    }
+
+    _shapeFocusUrl(shape) {
+      const points = this._shapePoints(shape);
+      const bounds = this._shapeBounds(points);
+      if (!bounds) {
+        return "";
+      }
+
+      const viewport = this._getMapViewportRect();
+      const zoom = this._shapeFocusZoom(bounds, viewport);
+      const centerLatLng = HOP.projection.canonicalToLatLng(bounds.center);
+      return this._buildPlanSourceUrl({
+        lat: centerLatLng.lat,
+        lng: centerLatLng.lng,
+        zoom
+      });
+    }
+
+    async _focusShape(shapeId) {
+      const shape = this.shapes.find((candidate) => candidate.id === shapeId);
+      if (!shape) {
+        this.ui.showStatus("Could not find that shape.");
+        return;
+      }
+
+      if (!this.currentPlanId) {
+        this.ui.showStatus("Save this plan before using Find.");
+        return;
+      }
+
+      if (this.navigatorBusyShapeId) {
+        return;
+      }
+
+      const targetUrl = this._shapeFocusUrl(shape);
+      if (!targetUrl) {
+        this.ui.showStatus("Could not determine shape location.");
+        return;
+      }
+
+      this.navigatorBusyShapeId = shape.id;
+      const shapeName = this._shapeNavigatorName(shape, this.shapes.indexOf(shape));
+      this.ui.showStatus(`Finding ${shapeName}...`);
+
+      try {
+        const saveResult = await this.saveCurrentPlan(this.currentPlanName || undefined);
+        if (!saveResult || !saveResult.ok) {
+          this.ui.showStatus("Could not save current plan before Find.");
+          return;
+        }
+
+        await this._persistNavigatorUiState(this.ui ? this.ui.getNavigatorState() : null);
+
+        const response = await chrome.runtime.sendMessage({
+          type: "HOP_SERVICE_LOAD_PLAN",
+          planId: this.currentPlanId,
+          targetUrl,
+          keyBindings: this.keyBindings,
+          focusShapeId: shape.id
+        });
+
+        if (!response || !response.ok) {
+          const message = response && response.error ? response.error : "Failed to navigate to shape.";
+          this.ui.showStatus(message);
+        }
+      } catch (error) {
+        this.ui.showStatus(`Find failed: ${error && error.message ? error.message : "unknown error"}`);
+      } finally {
+        this.navigatorBusyShapeId = null;
+      }
     }
 
     _getMapViewportRect() {
@@ -1377,12 +1665,30 @@
       }
     }
 
+    _handleNavigatorAction(payload) {
+      const action = payload && typeof payload.action === "string" ? payload.action : "";
+      const shapeId = payload && typeof payload.shapeId === "string" ? payload.shapeId : "";
+      if (!shapeId) {
+        return;
+      }
+
+      if (action === "find") {
+        this._focusShape(shapeId);
+      }
+    }
+
     _render() {
       if (!this.renderer) {
         return;
       }
 
       this._refreshToolbarStates();
+      if (this.ui) {
+        this.ui.setNavigatorItems(
+          this._buildNavigatorItems(),
+          this.selection.getSelectedId()
+        );
+      }
 
       this.renderer.render({
         view: this._buildViewModel(),

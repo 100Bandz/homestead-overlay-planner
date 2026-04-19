@@ -3,6 +3,12 @@
   "name": "Homestead Overlay Planner",
   "version": "1.0.0",
   "description": "Draw and save homestead planning overlays on top of Google Maps.",
+  "icons": {
+    "16": "store-assets/icon-16.png",
+    "32": "store-assets/icon-32.png",
+    "48": "store-assets/icon-48.png",
+    "128": "store-assets/icon-128.png"
+  },
   "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": [
     "https://www.google.com/maps/*",
@@ -14,6 +20,10 @@
   },
   "action": {
     "default_title": "Homestead Overlay Planner",
-    "default_popup": "popup/popup.html"
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "store-assets/icon-16.png",
+      "32": "store-assets/icon-32.png"
+    }
   }
 }
