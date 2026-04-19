@@ -308,13 +308,20 @@ function sanitizeLabelBox(raw) {
   const offsetY = Number(source.offsetY);
   const width = Number(source.width);
   const height = Number(source.height);
+  const referenceScale = Number(source.referenceScale);
 
-  return {
+  const sanitized = {
     offsetX: Number.isFinite(offsetX) ? offsetX : 10,
     offsetY: Number.isFinite(offsetY) ? offsetY : -28,
     width: Number.isFinite(width) ? Math.max(48, Math.min(360, width)) : 96,
     height: Number.isFinite(height) ? Math.max(20, Math.min(120, height)) : 24
   };
+
+  if (Number.isFinite(referenceScale) && referenceScale > 0) {
+    sanitized.referenceScale = referenceScale;
+  }
+
+  return sanitized;
 }
 
 function sanitizeShape(raw) {

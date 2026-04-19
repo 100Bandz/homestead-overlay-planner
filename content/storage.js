@@ -35,13 +35,20 @@
     const offsetY = Number(raw.offsetY);
     const width = Number(raw.width);
     const height = Number(raw.height);
+    const referenceScale = Number(raw.referenceScale);
 
-    return {
+    const sanitized = {
       offsetX: Number.isFinite(offsetX) ? offsetX : 10,
       offsetY: Number.isFinite(offsetY) ? offsetY : -28,
       width: Number.isFinite(width) ? Math.max(48, Math.min(360, width)) : 96,
       height: Number.isFinite(height) ? Math.max(20, Math.min(120, height)) : 24
     };
+
+    if (Number.isFinite(referenceScale) && referenceScale > 0) {
+      sanitized.referenceScale = referenceScale;
+    }
+
+    return sanitized;
   }
 
   function sanitizeShape(shape) {

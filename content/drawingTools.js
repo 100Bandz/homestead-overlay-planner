@@ -630,6 +630,37 @@
       return Math.max(0, Math.min(WORLD_SIZE, value));
     }
 
+    _currentViewScale() {
+      const view = this.getView ? this.getView() : null;
+      const scale = view ? Number(view.scale) : NaN;
+      return Number.isFinite(scale) && scale > 0 ? scale : 1;
+    }
+
+    _labelZoomFactor(labelBox, currentScale) {
+      const rawReferenceScale = labelBox ? Number(labelBox.referenceScale) : NaN;
+      const referenceScale =
+        Number.isFinite(rawReferenceScale) && rawReferenceScale > 0
+          ? rawReferenceScale
+          : currentScale;
+      return Math.max(0.35, Math.min(1, referenceScale / currentScale));
+    }
+
+    _renderedLabelBox(labelBox, currentScale) {
+      const source = labelBox && typeof labelBox === "object" ? labelBox : {};
+      const baseOffsetX = Number(source.offsetX);
+      const baseOffsetY = Number(source.offsetY);
+      const baseWidth = Number(source.width);
+      const baseHeight = Number(source.height);
+      const zoomFactor = this._labelZoomFactor(source, currentScale);
+
+      return {
+        offsetX: (Number.isFinite(baseOffsetX) ? baseOffsetX : 10) * zoomFactor,
+        offsetY: (Number.isFinite(baseOffsetY) ? baseOffsetY : -28) * zoomFactor,
+        width: Math.max(24, Math.min(360, (Number.isFinite(baseWidth) ? baseWidth : 96) * zoomFactor)),
+        height: Math.max(12, Math.min(120, (Number.isFinite(baseHeight) ? baseHeight : 24) * zoomFactor))
+      };
+    }
+
     _averageCanonicalPoints(points) {
       if (!Array.isArray(points) || !points.length) {
         return null;
@@ -1118,6 +1149,7 @@
           const shape = this._findShapeById(labelControl.shapeId);
           if (shape && shape.type === "label") {
             event.preventDefault();
+            const viewScale = this._currentViewScale();
             this.selection.select(labelControl.shapeId);
             this.clearSelectedEdge();
             this.draggingLabelControl = {
@@ -1125,12 +1157,8 @@
               shapeId: labelControl.shapeId,
               mode: labelControl.control,
               startScreen: this._screenPointFromEvent(event),
-              startBox: {
-                offsetX: shape.labelBox ? shape.labelBox.offsetX : 10,
-                offsetY: shape.labelBox ? shape.labelBox.offsetY : -28,
-                width: shape.labelBox ? shape.labelBox.width : 96,
-                height: shape.labelBox ? shape.labelBox.height : 24
-              },
+              referenceScale: viewScale,
+              startBox: this._renderedLabelBox(shape.labelBox, viewScale),
               startShapesSnapshot: this._cloneShapes(this.getShapes()),
               moved: false
             };
@@ -1353,7 +1381,8 @@
             offsetX: startBox.offsetX,
             offsetY: startBox.offsetY,
             width: startBox.width,
-            height: startBox.height
+            height: startBox.height,
+            referenceScale: this.draggingLabelControl.referenceScale
           };
 
           if (this.draggingLabelControl.mode === "bubble") {
@@ -1643,7 +1672,8 @@
             offsetX: 10,
             offsetY: -28,
             width: 96,
-            height: 24
+            height: 24,
+            referenceScale: this._currentViewScale()
           }
         });
 

@@ -772,6 +772,14 @@
       );
     }
 
+    _currentMapScale() {
+      const zoom = this.currentMapState ? Number(this.currentMapState.zoom) : NaN;
+      if (!Number.isFinite(zoom)) {
+        return 1;
+      }
+      return Math.pow(2, HOP.constants.CANONICAL_ZOOM - zoom);
+    }
+
     _normalizeShape(shape) {
       if (!shape || typeof shape !== "object" || typeof shape.type !== "string") {
         return null;
@@ -782,6 +790,7 @@
           return null;
         }
         const rawBox = shape.labelBox && typeof shape.labelBox === "object" ? shape.labelBox : {};
+        const rawReferenceScale = Number(rawBox.referenceScale);
         return {
           ...shape,
           text: typeof shape.text === "string" ? shape.text : "Label",
@@ -793,7 +802,11 @@
               : 96,
             height: Number.isFinite(Number(rawBox.height))
               ? Math.max(20, Math.min(120, Number(rawBox.height)))
-              : 24
+              : 24,
+            referenceScale:
+              Number.isFinite(rawReferenceScale) && rawReferenceScale > 0
+                ? rawReferenceScale
+                : this._currentMapScale()
           }
         };
       }

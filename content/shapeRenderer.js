@@ -989,18 +989,34 @@
       if (shape.type === "label" && shape.point) {
         const anchor = HOP.projection.canonicalToScreen(shape.point, view);
         const boxModel = shape.labelBox && typeof shape.labelBox === "object" ? shape.labelBox : {};
-        const boxWidth = Math.max(48, Math.min(360, Number(boxModel.width) || 96));
-        const boxHeight = Math.max(20, Math.min(120, Number(boxModel.height) || 24));
-        const offsetX = Number(boxModel.offsetX);
-        const offsetY = Number(boxModel.offsetY);
-        const boxX = anchor.x + (Number.isFinite(offsetX) ? offsetX : 10);
-        const boxY = anchor.y + (Number.isFinite(offsetY) ? offsetY : -28);
+        const baseWidth = Math.max(48, Math.min(360, Number(boxModel.width) || 96));
+        const baseHeight = Math.max(20, Math.min(120, Number(boxModel.height) || 24));
+        const baseOffsetX = Number(boxModel.offsetX);
+        const baseOffsetY = Number(boxModel.offsetY);
+        const currentScale = Number.isFinite(Number(view.scale)) && Number(view.scale) > 0
+          ? Number(view.scale)
+          : 1;
+        const referenceScaleRaw = Number(boxModel.referenceScale);
+        const referenceScale =
+          Number.isFinite(referenceScaleRaw) && referenceScaleRaw > 0
+            ? referenceScaleRaw
+            : currentScale;
+        // Keep labels readable while still scaling down on zoom-out to reduce drift/overlap.
+        const zoomFactor = clamp(referenceScale / currentScale, 0.35, 1);
+        const boxWidth = Math.max(24, Math.min(360, baseWidth * zoomFactor));
+        const boxHeight = Math.max(12, Math.min(120, baseHeight * zoomFactor));
+        const offsetX = (Number.isFinite(baseOffsetX) ? baseOffsetX : 10) * zoomFactor;
+        const offsetY = (Number.isFinite(baseOffsetY) ? baseOffsetY : -28) * zoomFactor;
+        const boxX = anchor.x + offsetX;
+        const boxY = anchor.y + offsetY;
+        const fontSize = Math.max(8, Math.min(12, 12 * zoomFactor));
+        const fontSpec = `700 ${fontSize}px 'Avenir Next', 'Segoe UI', sans-serif`;
 
         const fullText = shape.text || "Label";
         const fittedText = this._fitText(
           fullText,
           Math.max(20, boxWidth - 16),
-          "700 12px 'Avenir Next', 'Segoe UI', sans-serif"
+          fontSpec
         );
 
         const stemTarget = this._closestPointOnRectBoundary(anchor, {
@@ -1014,7 +1030,7 @@
           createSvgElement("circle", {
             cx: anchor.x,
             cy: anchor.y,
-            r: 4,
+            r: Math.max(2.5, 4 * zoomFactor),
             class: "hop-label-anchor"
           })
         );
@@ -1033,8 +1049,8 @@
           createSvgElement("rect", {
             x: boxX,
             y: boxY,
-            rx: 7,
-            ry: 7,
+            rx: Math.max(3, 7 * zoomFactor),
+            ry: Math.max(3, 7 * zoomFactor),
             width: boxWidth,
             height: boxHeight,
             class: "hop-label-box",
@@ -1044,9 +1060,10 @@
 
         const textNode = createSvgElement("text", {
           x: boxX + 8,
-          y: boxY + boxHeight / 2 + 4,
+          y: boxY + boxHeight / 2 + Math.max(2.4, fontSize * 0.34),
           class: "hop-label-text",
-          "data-label-control": "bubble"
+          "data-label-control": "bubble",
+          "font-size": fontSize.toFixed(2)
         });
         textNode.textContent = fittedText;
         shapeGroup.appendChild(textNode);
@@ -1060,7 +1077,7 @@
             createSvgElement("circle", {
               cx: boxX + boxWidth,
               cy: boxY + boxHeight,
-              r: 5.2,
+              r: Math.max(3.4, 5.2 * zoomFactor),
               class: "hop-label-resize-handle",
               "data-label-control": "resize"
             })
