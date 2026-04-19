@@ -14,7 +14,7 @@
       );
       this.currentMapState = null;
       this.shapes = [];
-      this.activeTool = HOP.constants.TOOL.SELECT;
+      this.activeTool = HOP.constants.TOOL.PAN;
       this.active = false;
       this.currentPlanId = null;
       this.currentPlanName = "";
@@ -78,6 +78,7 @@
       this._applyRuntimeOptions(opts);
 
       if (this.active) {
+        this._setTool(HOP.constants.TOOL.PAN);
         const currentState = HOP.MapState.parseMapUrl(window.location.href, {
           viewportHeight: this._getMapViewportRect().height
         });
@@ -149,7 +150,7 @@
         this.currentMapState = current;
       }
 
-      this._setTool(this.activeTool);
+      this._setTool(HOP.constants.TOOL.PAN);
       this._refreshToolbarStates();
 
       if (typeof opts.newPlanName === "string" && opts.newPlanName.trim()) {
@@ -266,6 +267,7 @@
       this.historyPast = [];
       this.historyFuture = [];
       this.drawingTools.cancelCurrentDrawing();
+      this._setTool(HOP.constants.TOOL.PAN);
 
       const viewport = this._getMapViewportRect();
       this.currentMapState = HOP.MapState.parseMapUrl(window.location.href, {

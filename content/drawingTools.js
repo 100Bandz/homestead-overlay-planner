@@ -58,6 +58,7 @@
       this.draggingLabelControl = null;
       this.draggingVertex = null;
       this.connectionDraft = null;
+      this.lastEdgeMeasurementTap = null;
       this.boundPointerDown = this._onPointerDown.bind(this);
       this.boundPointerMove = this._onPointerMove.bind(this);
       this.boundPointerUp = this._onPointerUp.bind(this);
@@ -100,6 +101,7 @@
       this.draggingLabelControl = null;
       this.draggingVertex = null;
       this.connectionDraft = null;
+      this.lastEdgeMeasurementTap = null;
       this.requestRender();
     }
 
@@ -296,8 +298,20 @@
     }
 
     _findShapeIdFromEventTarget(target) {
-      const shapeNode = target && target.closest ? target.closest("[data-shape-id]") : null;
+      const elementTarget = this._elementTarget(target);
+      const shapeNode =
+        elementTarget && elementTarget.closest ? elementTarget.closest("[data-shape-id]") : null;
       return shapeNode ? shapeNode.getAttribute("data-shape-id") : null;
+    }
+
+    _elementTarget(target) {
+      if (!target) {
+        return null;
+      }
+      if (target.nodeType === 3) {
+        return target.parentElement || null;
+      }
+      return target;
     }
 
     _findShapeById(shapeId) {
@@ -305,7 +319,11 @@
     }
 
     _findEdgeToggleFromTarget(target) {
-      const node = target && target.closest ? target.closest("[data-edge-toggle='true']") : null;
+      const elementTarget = this._elementTarget(target);
+      const node =
+        elementTarget && elementTarget.closest
+          ? elementTarget.closest("[data-edge-toggle='true']")
+          : null;
       if (!node) {
         return null;
       }
@@ -323,7 +341,11 @@
     }
 
     _findEdgeMeasurementFromTarget(target) {
-      const node = target && target.closest ? target.closest("[data-edge-measurement='true']") : null;
+      const elementTarget = this._elementTarget(target);
+      const node =
+        elementTarget && elementTarget.closest
+          ? elementTarget.closest("[data-edge-measurement='true']")
+          : null;
       if (!node) {
         return null;
       }
@@ -340,8 +362,29 @@
       };
     }
 
+    _isMeasurementVisualTarget(target) {
+      const elementTarget = this._elementTarget(target);
+      if (!elementTarget) {
+        return false;
+      }
+
+      if (
+        elementTarget.closest &&
+        (elementTarget.closest(".hop-edge-measurement") ||
+          elementTarget.closest(".hop-edge-measurement-hit") ||
+          elementTarget.closest(".hop-measurement-text") ||
+          elementTarget.closest(".hop-measurement-box"))
+      ) {
+        return true;
+      }
+
+      return false;
+    }
+
     _findLabelControlFromTarget(target) {
-      const controlNode = target && target.closest ? target.closest("[data-label-control]") : null;
+      const elementTarget = this._elementTarget(target);
+      const controlNode =
+        elementTarget && elementTarget.closest ? elementTarget.closest("[data-label-control]") : null;
       if (!controlNode) {
         return null;
       }
@@ -365,7 +408,11 @@
     }
 
     _findVertexHandleFromTarget(target) {
-      const handleNode = target && target.closest ? target.closest("[data-vertex-handle='true']") : null;
+      const elementTarget = this._elementTarget(target);
+      const handleNode =
+        elementTarget && elementTarget.closest
+          ? elementTarget.closest("[data-vertex-handle='true']")
+          : null;
       if (!handleNode) {
         return null;
       }
@@ -383,7 +430,11 @@
     }
 
     _findConnectionEndpointFromTarget(target) {
-      const node = target && target.closest ? target.closest("[data-connection-endpoint='true']") : null;
+      const elementTarget = this._elementTarget(target);
+      const node =
+        elementTarget && elementTarget.closest
+          ? elementTarget.closest("[data-connection-endpoint='true']")
+          : null;
       if (!node) {
         return null;
       }
@@ -523,6 +574,30 @@
       return bestEdge;
     }
 
+    _consumeEdgeMeasurementDoubleTap(shapeId, edgeIndex) {
+      const now = Date.now();
+      const thresholdMs = 450;
+      const previous = this.lastEdgeMeasurementTap;
+      const isDoubleTap =
+        previous &&
+        previous.shapeId === shapeId &&
+        previous.edgeIndex === edgeIndex &&
+        now - previous.time <= thresholdMs;
+
+      this.lastEdgeMeasurementTap = {
+        shapeId,
+        edgeIndex,
+        time: now
+      };
+
+      if (isDoubleTap) {
+        this.lastEdgeMeasurementTap = null;
+        return true;
+      }
+
+      return false;
+    }
+
     _appendPolygonPoint(point) {
       if (!this.draft || this.draft.type !== "polygon") {
         this.draft = {
@@ -636,12 +711,20 @@
           this.selection.select(edgeMeasurement.shapeId);
           this.setSelectedEdge(edgeMeasurement.shapeId, edgeMeasurement.edgeIndex);
           this.setEditShapeId(null);
-          if (event.detail >= 2) {
+          const shouldPrompt =
+            event.detail >= 2 ||
+            this._consumeEdgeMeasurementDoubleTap(
+              edgeMeasurement.shapeId,
+              edgeMeasurement.edgeIndex
+            );
+          if (shouldPrompt) {
             this.requestSetEdgeLength(edgeMeasurement.shapeId, edgeMeasurement.edgeIndex);
           }
           this.requestRender();
           return;
         }
+
+        this.lastEdgeMeasurementTap = null;
 
         const vertexHandle = this._findVertexHandleFromTarget(event.target);
         if (vertexHandle) {
@@ -1019,13 +1102,22 @@
 
       if (tool === HOP.constants.TOOL.SELECT) {
         const edgeMeasurement = this._findEdgeMeasurementFromTarget(event.target);
-        if (edgeMeasurement && event.detail >= 2) {
+        const measurementLikeTarget = this._isMeasurementVisualTarget(event.target);
+        const fallbackSelectedEdge = this.getSelectedEdge();
+        const edgeFromMeasurementTarget =
+          edgeMeasurement ||
+          (measurementLikeTarget && fallbackSelectedEdge ? fallbackSelectedEdge : null);
+
+        if (edgeFromMeasurementTarget && event.detail >= 2) {
           event.preventDefault();
           event.stopPropagation();
-          this.selection.select(edgeMeasurement.shapeId);
-          this.setSelectedEdge(edgeMeasurement.shapeId, edgeMeasurement.edgeIndex);
+          this.selection.select(edgeFromMeasurementTarget.shapeId);
+          this.setSelectedEdge(edgeFromMeasurementTarget.shapeId, edgeFromMeasurementTarget.edgeIndex);
           this.setEditShapeId(null);
-          this.requestSetEdgeLength(edgeMeasurement.shapeId, edgeMeasurement.edgeIndex);
+          this.requestSetEdgeLength(
+            edgeFromMeasurementTarget.shapeId,
+            edgeFromMeasurementTarget.edgeIndex
+          );
           return;
         }
       }
@@ -1115,13 +1207,22 @@
       const tool = this.getTool();
       if (tool === HOP.constants.TOOL.SELECT) {
         const edgeMeasurement = this._findEdgeMeasurementFromTarget(event.target);
-        if (edgeMeasurement) {
+        const measurementLikeTarget = this._isMeasurementVisualTarget(event.target);
+        const fallbackSelectedEdge = this.getSelectedEdge();
+        const edgeFromMeasurementTarget =
+          edgeMeasurement ||
+          (measurementLikeTarget && fallbackSelectedEdge ? fallbackSelectedEdge : null);
+
+        if (edgeFromMeasurementTarget) {
           event.preventDefault();
           event.stopPropagation();
-          this.selection.select(edgeMeasurement.shapeId);
-          this.setSelectedEdge(edgeMeasurement.shapeId, edgeMeasurement.edgeIndex);
+          this.selection.select(edgeFromMeasurementTarget.shapeId);
+          this.setSelectedEdge(edgeFromMeasurementTarget.shapeId, edgeFromMeasurementTarget.edgeIndex);
           this.setEditShapeId(null);
-          this.requestSetEdgeLength(edgeMeasurement.shapeId, edgeMeasurement.edgeIndex);
+          this.requestSetEdgeLength(
+            edgeFromMeasurementTarget.shapeId,
+            edgeFromMeasurementTarget.edgeIndex
+          );
           return;
         }
 
