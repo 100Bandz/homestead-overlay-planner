@@ -35,9 +35,13 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
    - `Areas: On/Off` (global area visibility for polygons/rectangles)
    - `Show/Unshow Length` (click individual edges to toggle their length labels)
    - `Undo`
+   - `Redo`
    - `Delete Selected`
    - `Save`
    - `Exit`
+6. In `Select` mode:
+   - Double-click a `line`, `rectangle`, or `polygon` to show vertex handles for reshaping.
+   - Double-click a `label` (or press `Enter` when selected) to edit text.
 5. Reopen the popup later to load existing plans.
 6. Use **Export JSON** in the popup to export a saved plan.
 

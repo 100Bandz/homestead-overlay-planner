@@ -26,6 +26,26 @@
         <div id="plansList" class="plans-list"></div>
       </section>
 
+      <section class="bindings-section">
+        <div class="section-title-row">
+          <h2>Key Bindings</h2>
+          <button id="customizeBindingsBtn" class="mini-btn" type="button">Customize</button>
+        </div>
+        <p id="bindingsHint" class="bindings-hint"></p>
+      </section>
+
+      <section id="bindingsPanel" class="bindings-panel" hidden>
+        <h3>Customize Shortcuts</h3>
+        <p class="bindings-help">
+          Click a shortcut field and press the key or key combo. Use Backspace/Delete to clear.
+        </p>
+        <div id="bindingsRows" class="bindings-rows"></div>
+        <div class="bindings-actions">
+          <button id="resetBindingsBtn" class="plan-btn" type="button">Reset Defaults</button>
+          <button id="closeBindingsBtn" class="plan-btn load" type="button">Done</button>
+        </div>
+      </section>
+
       <p id="flashMessage" class="flash-message" aria-live="polite"></p>
     </main>
 

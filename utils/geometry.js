@@ -107,14 +107,36 @@
       return 0;
     }
 
-    const R = 6378137;
-    const projected = points.map((point) => {
-      const ll = HOP.projection.canonicalToLatLng(point);
-      const latRad = (ll.lat * Math.PI) / 180;
-      const lngRad = (ll.lng * Math.PI) / 180;
+    const earthRadiusMeters = 6378137;
+    const latLng = points.map((point) => HOP.projection.canonicalToLatLng(point));
+    const lat0Deg = latLng.reduce((sum, value) => sum + value.lat, 0) / latLng.length;
+    const lat0Rad = (lat0Deg * Math.PI) / 180;
+
+    const unwrappedLng = [latLng[0].lng];
+    for (let i = 1; i < latLng.length; i += 1) {
+      const previous = unwrappedLng[i - 1];
+      let current = latLng[i].lng;
+      let delta = current - previous;
+      while (delta > 180) {
+        current -= 360;
+        delta = current - previous;
+      }
+      while (delta < -180) {
+        current += 360;
+        delta = current - previous;
+      }
+      unwrappedLng.push(current);
+    }
+
+    const lng0Deg = unwrappedLng.reduce((sum, value) => sum + value, 0) / unwrappedLng.length;
+
+    const projected = latLng.map((value, index) => {
+      const dLatRad = ((value.lat - lat0Deg) * Math.PI) / 180;
+      const dLngRad = ((unwrappedLng[index] - lng0Deg) * Math.PI) / 180;
       return {
-        x: R * lngRad,
-        y: R * Math.log(Math.tan(Math.PI / 4 + latRad / 2))
+        // Local tangent-plane approximation: good for small homestead-scale shapes.
+        x: earthRadiusMeters * dLngRad * Math.cos(lat0Rad),
+        y: earthRadiusMeters * dLatRad
       };
     });
 

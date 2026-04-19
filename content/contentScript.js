@@ -29,13 +29,13 @@
         }
 
         if (type === HOP.constants.MESSAGE_TYPE.START) {
-          const result = HOP.overlayManager.start();
+          const result = await HOP.overlayManager.start(message.options);
           sendResponse(result);
           return;
         }
 
         if (type === HOP.constants.MESSAGE_TYPE.LOAD) {
-          const result = await HOP.overlayManager.loadPlan(message.planId);
+          const result = await HOP.overlayManager.loadPlan(message.planId, message.options);
           sendResponse(result);
           return;
         }

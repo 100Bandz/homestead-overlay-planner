@@ -9,6 +9,7 @@
     TOOL: Object.freeze({
       SELECT: "select",
       PAN: "pan",
+      CONNECTION: "connection",
       LINE: "line",
       RECTANGLE: "rectangle",
       POLYGON: "polygon",
@@ -17,6 +18,7 @@
     TOOLBAR_ACTION: Object.freeze({
       SELECT: "select",
       PAN: "pan",
+      CONNECTION: "connection",
       LINE: "line",
       RECTANGLE: "rectangle",
       POLYGON: "polygon",
@@ -25,6 +27,7 @@
       TOGGLE_AREAS: "toggleAreas",
       TOGGLE_LENGTH_PICK: "toggleLengthPick",
       UNDO: "undo",
+      REDO: "redo",
       DELETE_SELECTED: "deleteSelected",
       SAVE: "save",
       EXIT: "exit"

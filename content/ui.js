@@ -32,6 +32,7 @@
       const buttons = [
         { action: HOP.constants.TOOLBAR_ACTION.SELECT, label: "Select" },
         { action: HOP.constants.TOOLBAR_ACTION.PAN, label: "Pan Mode" },
+        { action: HOP.constants.TOOLBAR_ACTION.CONNECTION, label: "Connection" },
         { action: HOP.constants.TOOLBAR_ACTION.LINE, label: "Line" },
         { action: HOP.constants.TOOLBAR_ACTION.RECTANGLE, label: "Rectangle" },
         { action: HOP.constants.TOOLBAR_ACTION.POLYGON, label: "Polygon" },
@@ -40,6 +41,7 @@
         { action: HOP.constants.TOOLBAR_ACTION.TOGGLE_AREAS, label: "Areas: On" },
         { action: HOP.constants.TOOLBAR_ACTION.TOGGLE_LENGTH_PICK, label: "Show/Unshow Length" },
         { action: HOP.constants.TOOLBAR_ACTION.UNDO, label: "Undo" },
+        { action: HOP.constants.TOOLBAR_ACTION.REDO, label: "Redo" },
         { action: HOP.constants.TOOLBAR_ACTION.DELETE_SELECTED, label: "Delete Selected" },
         { action: HOP.constants.TOOLBAR_ACTION.SAVE, label: "Save" },
         { action: HOP.constants.TOOLBAR_ACTION.EXIT, label: "Exit" }
@@ -100,6 +102,7 @@
       const toolActions = new Set([
         HOP.constants.TOOLBAR_ACTION.SELECT,
         HOP.constants.TOOLBAR_ACTION.PAN,
+        HOP.constants.TOOLBAR_ACTION.CONNECTION,
         HOP.constants.TOOLBAR_ACTION.LINE,
         HOP.constants.TOOLBAR_ACTION.RECTANGLE,
         HOP.constants.TOOLBAR_ACTION.POLYGON,
@@ -139,6 +142,7 @@
       this.root.classList.remove(
         "hop-tool-pan",
         "hop-tool-select",
+        "hop-tool-connection",
         "hop-tool-line",
         "hop-tool-rectangle",
         "hop-tool-polygon",

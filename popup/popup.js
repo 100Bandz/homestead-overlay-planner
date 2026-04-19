@@ -1,4 +1,5 @@
 const STORAGE_KEY = "homesteadOverlayPlannerPlans";
+const SETTINGS_KEY = "homesteadOverlayPlannerSettings";
 const MESSAGE_TYPE = {
   PING: "HOP_PING",
   START: "HOP_START_PLANNING",
@@ -22,14 +23,55 @@ const INJECTION_FILES = [
 
 const MAP_URL_RE = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)([zm])/i;
 
+const BINDING_ACTIONS = [
+  { id: "select", label: "Select" },
+  { id: "pan", label: "Pan Mode" },
+  { id: "connection", label: "Connection" },
+  { id: "line", label: "Line" },
+  { id: "polygon", label: "Polygon" },
+  { id: "rectangle", label: "Rectangle" },
+  { id: "label", label: "Label" },
+  { id: "undo", label: "Undo" },
+  { id: "redo", label: "Redo" },
+  { id: "length", label: "Length Toggle" },
+  { id: "showUnshowLength", label: "Show/Unshow Length" },
+  { id: "save", label: "Save" },
+  { id: "exit", label: "Exit" }
+];
+
+const DEFAULT_KEY_BINDINGS = Object.freeze({
+  select: "v",
+  pan: "h",
+  connection: "c",
+  line: "l",
+  polygon: "g",
+  rectangle: "r",
+  label: "t",
+  undo: "z",
+  redo: "y",
+  length: "k",
+  showUnshowLength: "j",
+  save: "s",
+  exit: "x"
+});
+
 let activeTab = null;
 let activeMapState = null;
+let settings = {
+  keyBindings: { ...DEFAULT_KEY_BINDINGS }
+};
 
 const ui = {
   startButton: null,
   pageStatus: null,
   plansList: null,
-  flashMessage: null
+  flashMessage: null,
+  bindingsHint: null,
+  customizeBindingsBtn: null,
+  bindingsPanel: null,
+  bindingsRows: null,
+  closeBindingsBtn: null,
+  resetBindingsBtn: null
 };
 
 document.addEventListener("DOMContentLoaded", init);
@@ -39,12 +81,178 @@ async function init() {
   ui.pageStatus = document.getElementById("pageStatus");
   ui.plansList = document.getElementById("plansList");
   ui.flashMessage = document.getElementById("flashMessage");
+  ui.bindingsHint = document.getElementById("bindingsHint");
+  ui.customizeBindingsBtn = document.getElementById("customizeBindingsBtn");
+  ui.bindingsPanel = document.getElementById("bindingsPanel");
+  ui.bindingsRows = document.getElementById("bindingsRows");
+  ui.closeBindingsBtn = document.getElementById("closeBindingsBtn");
+  ui.resetBindingsBtn = document.getElementById("resetBindingsBtn");
 
   ui.startButton.addEventListener("click", onStartPlanning);
+  ui.customizeBindingsBtn.addEventListener("click", () => {
+    const nextHidden = !ui.bindingsPanel.hidden;
+    ui.bindingsPanel.hidden = nextHidden;
+    if (!nextHidden) {
+      renderBindingsRows();
+    }
+  });
+  ui.closeBindingsBtn.addEventListener("click", () => {
+    ui.bindingsPanel.hidden = true;
+  });
+  ui.resetBindingsBtn.addEventListener("click", async () => {
+    settings.keyBindings = { ...DEFAULT_KEY_BINDINGS };
+    await saveSettings();
+    renderBindingSummary();
+    renderBindingsRows();
+    setFlash("Shortcuts reset to defaults.");
+  });
+
+  settings = await loadSettings();
+  renderBindingSummary();
+  renderBindingsRows();
 
   activeTab = await getActiveTab();
   updatePageStatus();
   await refreshPlansList();
+}
+
+function normalizeShortcut(shortcut) {
+  return typeof shortcut === "string" ? shortcut.trim().toLowerCase() : "";
+}
+
+function normalizeKeyBindings(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const out = {};
+  Object.keys(DEFAULT_KEY_BINDINGS).forEach((key) => {
+    out[key] = normalizeShortcut(source[key]) || DEFAULT_KEY_BINDINGS[key];
+  });
+  return out;
+}
+
+async function loadSettings() {
+  try {
+    const data = await chrome.storage.local.get(SETTINGS_KEY);
+    const raw = data && data[SETTINGS_KEY] ? data[SETTINGS_KEY] : {};
+    return {
+      keyBindings: normalizeKeyBindings(raw.keyBindings)
+    };
+  } catch (_error) {
+    return {
+      keyBindings: { ...DEFAULT_KEY_BINDINGS }
+    };
+  }
+}
+
+async function saveSettings() {
+  await chrome.storage.local.set({
+    [SETTINGS_KEY]: {
+      keyBindings: normalizeKeyBindings(settings.keyBindings)
+    }
+  });
+}
+
+function displayShortcut(shortcut) {
+  const normalized = normalizeShortcut(shortcut);
+  if (!normalized) {
+    return "";
+  }
+  return normalized.toUpperCase();
+}
+
+function eventToShortcut(event) {
+  const modifierKeys = new Set(["Control", "Meta", "Alt", "Shift"]);
+  if (modifierKeys.has(event.key)) {
+    return "";
+  }
+
+  let keyToken = "";
+  if (event.key === " ") {
+    keyToken = "space";
+  } else if (event.key.length === 1) {
+    keyToken = event.key.toLowerCase();
+  } else {
+    keyToken = String(event.key || "").toLowerCase();
+  }
+
+  if (!keyToken) {
+    return "";
+  }
+
+  const parts = [];
+  if (event.ctrlKey) {
+    parts.push("ctrl");
+  }
+  if (event.metaKey) {
+    parts.push("meta");
+  }
+  if (event.altKey) {
+    parts.push("alt");
+  }
+  if (event.shiftKey) {
+    parts.push("shift");
+  }
+  parts.push(keyToken);
+  return parts.join("+");
+}
+
+function renderBindingSummary() {
+  if (!ui.bindingsHint) {
+    return;
+  }
+
+  const summaryItems = [
+    `Select: ${displayShortcut(settings.keyBindings.select)}`,
+    `Pan: ${displayShortcut(settings.keyBindings.pan)}`,
+    `Line: ${displayShortcut(settings.keyBindings.line)}`,
+    `Save: ${displayShortcut(settings.keyBindings.save)}`
+  ];
+  ui.bindingsHint.textContent = summaryItems.join(" • ");
+}
+
+function renderBindingsRows() {
+  ui.bindingsRows.innerHTML = "";
+
+  BINDING_ACTIONS.forEach((actionDef) => {
+    const row = document.createElement("div");
+    row.className = "binding-row";
+
+    const label = document.createElement("label");
+    label.className = "binding-label";
+    label.textContent = actionDef.label;
+
+    const input = document.createElement("input");
+    input.className = "binding-input";
+    input.type = "text";
+    input.readOnly = true;
+    input.value = displayShortcut(settings.keyBindings[actionDef.id]);
+
+    input.addEventListener("focus", () => {
+      input.select();
+    });
+
+    input.addEventListener("keydown", async (event) => {
+      event.preventDefault();
+
+      if ((event.key === "Backspace" || event.key === "Delete") && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+        settings.keyBindings[actionDef.id] = "";
+      } else {
+        const shortcut = eventToShortcut(event);
+        if (!shortcut) {
+          return;
+        }
+        settings.keyBindings[actionDef.id] = shortcut;
+      }
+
+      settings.keyBindings = normalizeKeyBindings(settings.keyBindings);
+      await saveSettings();
+      renderBindingSummary();
+      input.value = displayShortcut(settings.keyBindings[actionDef.id]);
+    });
+
+    row.appendChild(label);
+    row.appendChild(input);
+    ui.bindingsRows.appendChild(row);
+  });
 }
 
 async function getActiveTab() {
@@ -158,14 +366,26 @@ async function onStartPlanning() {
     return;
   }
 
+  const proposedName = window.prompt("New plan name:", "New Homestead Plan");
+  const newPlanName = typeof proposedName === "string" ? proposedName.trim() : "";
+  if (!newPlanName) {
+    setFlash("Start planning cancelled (name required).");
+    return;
+  }
+
   try {
     await ensurePlannerInjected(activeTab.id);
     const response = await sendMessageToTab(activeTab.id, {
-      type: MESSAGE_TYPE.START
+      type: MESSAGE_TYPE.START,
+      options: {
+        newPlanName,
+        keyBindings: settings.keyBindings
+      }
     });
 
     if (response && response.ok) {
-      setFlash("Planning overlay enabled in active tab.");
+      setFlash(`Created and opened new plan "${newPlanName}".`);
+      await refreshPlansList();
     } else {
       setFlash("Could not start planning mode.");
     }
@@ -201,6 +421,12 @@ async function loadPlans() {
   } catch (_error) {
     return [];
   }
+}
+
+async function savePlans(plans) {
+  await chrome.storage.local.set({
+    [STORAGE_KEY]: Array.isArray(plans) ? plans : []
+  });
 }
 
 function sortPlansForCurrentTab(plans) {
@@ -254,13 +480,90 @@ function haversineMeters(a, b) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
 }
 
+async function renamePlan(planId, nextName) {
+  const trimmed = typeof nextName === "string" ? nextName.trim() : "";
+  if (!trimmed) {
+    return false;
+  }
+
+  const plans = await loadPlans();
+  const index = plans.findIndex((plan) => plan.id === planId);
+  if (index < 0) {
+    return false;
+  }
+
+  if (plans[index].name === trimmed) {
+    return true;
+  }
+
+  plans[index] = {
+    ...plans[index],
+    name: trimmed,
+    updatedAt: new Date().toISOString()
+  };
+
+  await savePlans(plans);
+  return true;
+}
+
+function startInlinePlanRename(titleNode, plan) {
+  const input = document.createElement("input");
+  input.className = "plan-name-input";
+  input.type = "text";
+  input.value = plan.name || "";
+
+  const parent = titleNode.parentNode;
+  if (!parent) {
+    return;
+  }
+
+  parent.replaceChild(input, titleNode);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const finish = async (commit) => {
+    if (done) {
+      return;
+    }
+    done = true;
+
+    if (commit) {
+      const ok = await renamePlan(plan.id, input.value);
+      if (!ok) {
+        setFlash("Could not rename plan.");
+      } else {
+        setFlash("Plan name updated.");
+      }
+      await refreshPlansList();
+      return;
+    }
+
+    await refreshPlansList();
+  };
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      finish(true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      finish(false);
+    }
+  });
+
+  input.addEventListener("blur", () => {
+    finish(true);
+  });
+}
+
 function renderPlans(plans) {
   ui.plansList.innerHTML = "";
 
   if (!plans.length) {
     const empty = document.createElement("div");
     empty.className = "plan-empty";
-    empty.textContent = "No saved plans yet. Start planning on Google Maps, then save from the in-page toolbar.";
+    empty.textContent = "No saved plans yet. Start Planning creates a new plan and auto-saves it.";
     ui.plansList.appendChild(empty);
     return;
   }
@@ -272,6 +575,8 @@ function renderPlans(plans) {
     const title = document.createElement("p");
     title.className = "plan-name";
     title.textContent = plan.name;
+    title.title = "Double-click to rename";
+    title.addEventListener("dblclick", () => startInlinePlanRename(title, plan));
 
     const meta = document.createElement("p");
     meta.className = "plan-meta";
@@ -286,7 +591,7 @@ function renderPlans(plans) {
     loadBtn.className = "plan-btn load";
     loadBtn.type = "button";
     loadBtn.textContent = "Load";
-    loadBtn.addEventListener("click", () => onLoadPlan(plan.id));
+    loadBtn.addEventListener("click", () => onLoadPlan(plan));
 
     const exportBtn = document.createElement("button");
     exportBtn.className = "plan-btn";
@@ -320,17 +625,57 @@ function formatTimestamp(isoString) {
   return date.toLocaleString();
 }
 
-async function onLoadPlan(planId) {
-  if (!activeTab || !activeTab.id || !isGoogleMapsPage(activeTab.url || "")) {
-    setFlash("Open Google Maps in the active tab before loading a plan.");
+function buildPlanSourceUrl(plan) {
+  if (plan && plan.source && typeof plan.source.url === "string" && plan.source.url.trim()) {
+    return plan.source.url;
+  }
+
+  if (!plan || !plan.source) {
+    return "";
+  }
+
+  const lat = Number(plan.source.lat);
+  const lng = Number(plan.source.lng);
+  const zoom = Number(plan.source.zoom);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return "";
+  }
+
+  const safeZoom = Number.isFinite(zoom) ? zoom : 20;
+  return `https://www.google.com/maps/@${lat.toFixed(7)},${lng.toFixed(7)},${safeZoom.toFixed(2)}z`;
+}
+
+async function waitForTabNavigation(tabId, timeoutMs) {
+  const timeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 12000;
+  const start = Date.now();
+
+  while (Date.now() - start < timeout) {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab) {
+      break;
+    }
+    if (tab.status === "complete") {
+      return tab;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+  }
+
+  return chrome.tabs.get(tabId);
+}
+
+async function onLoadPlan(plan) {
+  if (!activeTab || !activeTab.id) {
+    setFlash("Open a browser tab before loading a plan.");
     return;
   }
 
   try {
-    await ensurePlannerInjected(activeTab.id);
-    const response = await sendMessageToTab(activeTab.id, {
-      type: MESSAGE_TYPE.LOAD,
-      planId
+    const response = await chrome.runtime.sendMessage({
+      type: "HOP_SERVICE_LOAD_PLAN",
+      tabId: activeTab.id,
+      planId: plan.id,
+      targetUrl: buildPlanSourceUrl(plan),
+      keyBindings: settings.keyBindings
     });
 
     if (response && response.ok) {
@@ -352,10 +697,7 @@ async function onDeletePlan(planId) {
   const plans = await loadPlans();
   const next = plans.filter((plan) => plan.id !== planId);
 
-  await chrome.storage.local.set({
-    [STORAGE_KEY]: next
-  });
-
+  await savePlans(next);
   setFlash("Plan deleted.");
   await refreshPlansList();
 }

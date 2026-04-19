@@ -9,7 +9,7 @@
 body {
   margin: 0;
   width: 380px;
-  min-height: 460px;
+  min-height: 520px;
   font-family: "Avenir Next", "Segoe UI", sans-serif;
   background: linear-gradient(165deg, #f2f8f4 0%, #ecf4f6 55%, #e8f0f8 100%);
   color: #1d2f2c;
@@ -75,7 +75,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 320px;
+  max-height: 260px;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -92,6 +92,18 @@ body {
   font-weight: 700;
   margin: 0;
   color: #1c342d;
+  cursor: text;
+}
+
+.plan-name-input {
+  width: 100%;
+  border: 1px solid #3b6f63;
+  border-radius: 6px;
+  padding: 5px 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1c342d;
+  background: #f8fffd;
 }
 
 .plan-meta {
@@ -144,4 +156,85 @@ body {
   min-height: 16px;
   font-size: 12px;
   color: #254c41;
+}
+
+.bindings-section {
+  margin-top: 14px;
+}
+
+.mini-btn {
+  border: 1px solid #3b6f63;
+  background: #f6fffc;
+  color: #23433d;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.bindings-hint {
+  margin: 0;
+  font-size: 11px;
+  color: #496760;
+}
+
+.bindings-panel {
+  margin-top: 8px;
+  border: 1px solid rgba(43, 83, 75, 0.26);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 10px;
+}
+
+.bindings-panel h3 {
+  margin: 0;
+  font-size: 13px;
+  color: #224740;
+}
+
+.bindings-help {
+  margin: 6px 0 10px;
+  font-size: 11px;
+  color: #4a6660;
+}
+
+.bindings-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.binding-row {
+  display: grid;
+  grid-template-columns: 1fr 110px;
+  align-items: center;
+  gap: 8px;
+}
+
+.binding-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #2e5550;
+}
+
+.binding-input {
+  width: 100%;
+  border: 1px solid #3b6f63;
+  border-radius: 8px;
+  padding: 6px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #23433d;
+  background: #f8fffd;
+  text-transform: uppercase;
+}
+
+.bindings-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
 }
