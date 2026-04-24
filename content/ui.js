@@ -50,23 +50,23 @@
 
       const buttons = [
         { action: HOP.constants.TOOLBAR_ACTION.SELECT, label: "Select" },
-        { action: HOP.constants.TOOLBAR_ACTION.LASSO, label: "Lasso" },
         { action: HOP.constants.TOOLBAR_ACTION.PAN, label: "Pan Mode" },
+        { action: HOP.constants.TOOLBAR_ACTION.LASSO, label: "Lasso" },
         { action: HOP.constants.TOOLBAR_ACTION.CONNECTION, label: "Connection" },
         { action: HOP.constants.TOOLBAR_ACTION.LINE, label: "Line" },
         { action: HOP.constants.TOOLBAR_ACTION.RECTANGLE, label: "Rectangle" },
         { action: HOP.constants.TOOLBAR_ACTION.CIRCLE, label: "Circle" },
         { action: HOP.constants.TOOLBAR_ACTION.POLYGON, label: "Polygon" },
         { action: HOP.constants.TOOLBAR_ACTION.LABEL, label: "Label" },
+        { action: HOP.constants.TOOLBAR_ACTION.DELETE_SELECTED, label: "Delete Selected" },
         { action: HOP.constants.TOOLBAR_ACTION.TOGGLE_LENGTHS, label: "Lengths: On" },
-        { action: HOP.constants.TOOLBAR_ACTION.TOGGLE_AREAS, label: "Areas: On" },
         { action: HOP.constants.TOOLBAR_ACTION.TOGGLE_LENGTH_PICK, label: "Show/Unshow Length" },
+        { action: HOP.constants.TOOLBAR_ACTION.TOGGLE_AREAS, label: "Areas: On" },
         { action: HOP.constants.TOOLBAR_ACTION.TOGGLE_AREA_PICK, label: "Show/Unshow Area" },
         { action: HOP.constants.TOOLBAR_ACTION.COPY, label: "Copy" },
         { action: HOP.constants.TOOLBAR_ACTION.PASTE, label: "Paste" },
         { action: HOP.constants.TOOLBAR_ACTION.UNDO, label: "Undo" },
         { action: HOP.constants.TOOLBAR_ACTION.REDO, label: "Redo" },
-        { action: HOP.constants.TOOLBAR_ACTION.DELETE_SELECTED, label: "Delete Selected" },
         { action: HOP.constants.TOOLBAR_ACTION.SAVE, label: "Save" },
         { action: HOP.constants.TOOLBAR_ACTION.EXIT, label: "Exit" }
       ];
