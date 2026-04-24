@@ -194,6 +194,42 @@
       return HOP.projection.latLngDistanceMeters(a, b);
     }
 
+    _circleRadiusMeters(centerCanonical, radiusCanonical) {
+      if (
+        !centerCanonical ||
+        !Number.isFinite(centerCanonical.x) ||
+        !Number.isFinite(centerCanonical.y) ||
+        !Number.isFinite(radiusCanonical) ||
+        radiusCanonical <= 0
+      ) {
+        return 0;
+      }
+
+      const edgePoint = {
+        x: HOP.projection.normalizeCanonicalX(centerCanonical.x + radiusCanonical),
+        y: centerCanonical.y
+      };
+      const centerLatLng = HOP.projection.canonicalToLatLng(centerCanonical);
+      const edgeLatLng = HOP.projection.canonicalToLatLng(edgePoint);
+      return HOP.projection.latLngDistanceMeters(centerLatLng, edgeLatLng);
+    }
+
+    _circleDiameterMeters(centerCanonical, radiusCanonical) {
+      const radiusMeters = this._circleRadiusMeters(centerCanonical, radiusCanonical);
+      if (!Number.isFinite(radiusMeters) || radiusMeters <= 0) {
+        return 0;
+      }
+      return 2 * radiusMeters;
+    }
+
+    _circleAreaSquareMeters(centerCanonical, radiusCanonical) {
+      const radiusMeters = this._circleRadiusMeters(centerCanonical, radiusCanonical);
+      if (!Number.isFinite(radiusMeters) || radiusMeters <= 0) {
+        return 0;
+      }
+      return Math.PI * radiusMeters * radiusMeters;
+    }
+
     _isEdgeVisible(shape, edgeIndex) {
       const measurements = shape.measurements && typeof shape.measurements === "object"
         ? shape.measurements
@@ -241,6 +277,20 @@
         "data-edge-toggle": "true",
         "data-shape-id": shapeId,
         "data-edge-index": edgeIndex
+      });
+    }
+
+    _createCircleEdgeHit(center, radiusPx, shapeId) {
+      const hitStroke = clamp(radiusPx * 0.35, 10, 18);
+      return createSvgElement("circle", {
+        cx: center.x,
+        cy: center.y,
+        r: radiusPx,
+        class: "hop-edge-hit",
+        "stroke-width": hitStroke,
+        "data-edge-toggle": "true",
+        "data-shape-id": shapeId,
+        "data-edge-index": 0
       });
     }
 
@@ -972,6 +1022,103 @@
       }
 
       if (
+        shape.type === "circle" &&
+        shape.center &&
+        Number.isFinite(shape.center.x) &&
+        Number.isFinite(shape.center.y) &&
+        Number.isFinite(shape.radius) &&
+        shape.radius > 0
+      ) {
+        const centerCanonical = shape.center;
+        const radiusCanonical = Number(shape.radius);
+        const center = HOP.projection.canonicalToScreen(centerCanonical, view);
+        const radiusPx = radiusCanonical / view.scale;
+        if (!Number.isFinite(radiusPx) || radiusPx <= 0) {
+          return null;
+        }
+
+        shapeGroup.appendChild(
+          createSvgElement("circle", {
+            cx: center.x,
+            cy: center.y,
+            r: radiusPx,
+            class: "hop-shape-path"
+          })
+        );
+
+        shapeGroup.appendChild(
+          createSvgElement("circle", {
+            cx: center.x,
+            cy: center.y,
+            r: radiusPx,
+            class: "hop-shape-hit-fill"
+          })
+        );
+
+        if (
+          settings.selectedEdge &&
+          settings.selectedEdge.shapeId === shape.id &&
+          settings.selectedEdge.edgeIndex === 0
+        ) {
+          shapeGroup.appendChild(
+            createSvgElement("circle", {
+              cx: center.x,
+              cy: center.y,
+              r: radiusPx,
+              class: "hop-selected-edge"
+            })
+          );
+        }
+
+        measurementGroup.appendChild(this._createCircleEdgeHit(center, radiusPx, shape.id));
+
+        const edgeBadgeMetrics = [];
+        if (settings.showAllLengths && this._isEdgeVisible(shape, 0)) {
+          const diameter = this._circleDiameterMeters(centerCanonical, radiusCanonical);
+          const lengthText = formatLengthMeters(diameter);
+          const badgeX = center.x;
+          const badgeY = center.y - radiusPx - 14;
+          measurementGroup.appendChild(
+            this._createMeasurementBadge(
+              badgeX,
+              badgeY,
+              lengthText,
+              0,
+              { shapeId: shape.id, edgeIndex: 0 }
+            )
+          );
+          edgeBadgeMetrics.push({
+            x: badgeX,
+            y: badgeY,
+            halfDiagonal: this._edgeBadgeHalfDiagonal(lengthText)
+          });
+        }
+
+        if (settings.showAllAreas && this._areaVisible(shape)) {
+          const area = this._circleAreaSquareMeters(centerCanonical, radiusCanonical);
+          const areaText = formatAreaSquareMeters(area);
+          let areaX = center.x;
+          let areaY = center.y;
+          if (this._isAreaBadgeNearEdgeBadges({ x: areaX, y: areaY }, areaText, edgeBadgeMetrics)) {
+            areaY = center.y + Math.min(radiusPx * 0.45, 18);
+          }
+          measurementGroup.appendChild(this._createAreaBadge(areaX, areaY, areaText));
+        }
+
+        if (isEditShape || isSelected) {
+          shapeGroup.appendChild(
+            this._createVertexHandle(
+              { x: center.x + radiusPx, y: center.y },
+              shape.id,
+              0
+            )
+          );
+        }
+
+        return { shapeGroup, measurementGroup };
+      }
+
+      if (
         (shape.type === "rectangle" || shape.type === "polygon") &&
         Array.isArray(shape.points) &&
         shape.points.length >= 3
@@ -1259,6 +1406,32 @@
           })
         );
 
+        return group;
+      }
+
+      if (draft.type === "circle" && draft.start && draft.end) {
+        const startX = Number(draft.start.x);
+        const startY = Number(draft.start.y);
+        const endX = startX + HOP.projection.wrapDeltaX(Number(draft.end.x) - startX);
+        const endY = Number(draft.end.y);
+        const centerCanonical = {
+          x: HOP.projection.normalizeCanonicalX(startX + (endX - startX) / 2),
+          y: startY + (endY - startY) / 2
+        };
+        const center = HOP.projection.canonicalToScreen(centerCanonical, view);
+        const diameterPx = Math.hypot(endX - startX, endY - startY) / view.scale;
+        const radiusPx = diameterPx / 2;
+        if (!Number.isFinite(radiusPx) || radiusPx <= 0) {
+          return null;
+        }
+        group.appendChild(
+          createSvgElement("circle", {
+            cx: center.x,
+            cy: center.y,
+            r: radiusPx,
+            class: "hop-draft-path"
+          })
+        );
         return group;
       }
 

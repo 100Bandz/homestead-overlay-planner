@@ -207,6 +207,7 @@
       return (
         shape.type === "line" ||
         shape.type === "rectangle" ||
+        shape.type === "circle" ||
         shape.type === "polygon" ||
         shape.type === "label"
       );
@@ -215,13 +216,13 @@
     _copySelectedShape() {
       const selectedId = this.selection.getSelectedId();
       if (!selectedId) {
-        this.reportStatus("Select a line, rectangle, polygon, or label first.");
+        this.reportStatus("Select a line, rectangle, circle, polygon, or label first.");
         return false;
       }
 
       const shape = this._findShapeById(selectedId);
       if (!this._isCopyableShape(shape)) {
-        this.reportStatus("Only line, rectangle, polygon, and label shapes can be copied.");
+        this.reportStatus("Only line, rectangle, circle, polygon, and label shapes can be copied.");
         return false;
       }
 
@@ -246,6 +247,13 @@
         return clone;
       }
 
+      if (clone.type === "circle") {
+        if (clone.center && Number.isFinite(clone.center.x) && Number.isFinite(clone.center.y)) {
+          clone.center = this._offsetPoint(clone.center, dx, dy);
+        }
+        return clone;
+      }
+
       if (!Array.isArray(clone.points)) {
         clone.points = [];
       }
@@ -255,7 +263,7 @@
 
     _pasteCopiedShape() {
       if (!this._isCopyableShape(this.copiedShape)) {
-        this.reportStatus("Copy a line, rectangle, polygon, or label first.");
+        this.reportStatus("Copy a line, rectangle, circle, polygon, or label first.");
         return false;
       }
 
@@ -271,6 +279,17 @@
 
       if (pasted.type === "label") {
         if (!pasted.point || !Number.isFinite(pasted.point.x) || !Number.isFinite(pasted.point.y)) {
+          this.reportStatus("Could not paste shape.");
+          return false;
+        }
+      } else if (pasted.type === "circle") {
+        if (
+          !pasted.center ||
+          !Number.isFinite(pasted.center.x) ||
+          !Number.isFinite(pasted.center.y) ||
+          !Number.isFinite(pasted.radius) ||
+          pasted.radius <= 0
+        ) {
           this.reportStatus("Could not paste shape.");
           return false;
         }
@@ -751,6 +770,39 @@
       };
     }
 
+    _circleIntersectsScreenRect(shape, rect, view) {
+      if (
+        !shape ||
+        shape.type !== "circle" ||
+        !shape.center ||
+        !Number.isFinite(shape.center.x) ||
+        !Number.isFinite(shape.center.y) ||
+        !Number.isFinite(shape.radius) ||
+        shape.radius <= 0 ||
+        !rect ||
+        !view
+      ) {
+        return false;
+      }
+
+      const center = HOP.projection.canonicalToScreen(shape.center, view);
+      const radius = Math.max(0, Number(shape.radius) / (Number(view.scale) || 1));
+      if (!Number.isFinite(radius) || radius <= 0) {
+        return false;
+      }
+
+      if (this._pointInScreenRect(center, rect)) {
+        return true;
+      }
+
+      const nearest = {
+        x: this._clamp(center.x, rect.left, rect.right),
+        y: this._clamp(center.y, rect.top, rect.bottom)
+      };
+      const distance = HOP.geometry.distance(center, nearest);
+      return distance <= radius;
+    }
+
     _shapeIntersectsLassoRect(shape, rect, view) {
       if (!shape || !rect || !view) {
         return false;
@@ -763,6 +815,10 @@
         }
         const labelRect = this._labelRectForLasso(shape, view);
         return this._rectsIntersect(rect, labelRect);
+      }
+
+      if (shape.type === "circle") {
+        return this._circleIntersectsScreenRect(shape, rect, view);
       }
 
       if (!Array.isArray(shape.points) || shape.points.length < 2) {
@@ -1046,6 +1102,30 @@
         if (!shape || !candidateIds.has(shape.id)) {
           continue;
         }
+
+        if (
+          shape.type === "circle" &&
+          shape.center &&
+          Number.isFinite(shape.center.x) &&
+          Number.isFinite(shape.center.y) &&
+          Number.isFinite(shape.radius) &&
+          shape.radius > 0
+        ) {
+          const handleCanonical = this._circleRadiusHandleCanonical(shape);
+          if (handleCanonical) {
+            const handleScreen = HOP.projection.canonicalToScreen(handleCanonical, view);
+            const distance = HOP.geometry.distance(screenPoint, handleScreen);
+            if (distance <= maxDistance && (!best || distance < best.distance)) {
+              best = {
+                shapeId: shape.id,
+                vertexIndex: 0,
+                distance
+              };
+            }
+          }
+          continue;
+        }
+
         if (
           (shape.type !== "line" && shape.type !== "rectangle" && shape.type !== "polygon") ||
           !Array.isArray(shape.points)
@@ -1132,6 +1212,59 @@
       return {
         x: HOP.projection.normalizeCanonicalX(point.x),
         y: this._normalizeY(point.y)
+      };
+    }
+
+    _circleRadiusHandleCanonical(shape) {
+      if (
+        !shape ||
+        shape.type !== "circle" ||
+        !shape.center ||
+        !Number.isFinite(shape.center.x) ||
+        !Number.isFinite(shape.center.y) ||
+        !Number.isFinite(shape.radius) ||
+        shape.radius <= 0
+      ) {
+        return null;
+      }
+
+      return this._normalizeCanonicalPoint({
+        x: Number(shape.center.x) + Number(shape.radius),
+        y: Number(shape.center.y)
+      });
+    }
+
+    _circleRadiusFromPointer(center, point) {
+      if (!center || !point) {
+        return 0;
+      }
+      const dx = HOP.projection.wrapDeltaX(point.x - center.x);
+      const dy = point.y - center.y;
+      return Math.hypot(dx, dy);
+    }
+
+    _circleFromDiameterEndpoints(start, end) {
+      if (!start || !end) {
+        return null;
+      }
+
+      const startX = Number(start.x);
+      const startY = Number(start.y);
+      const endX = startX + HOP.projection.wrapDeltaX(Number(end.x) - startX);
+      const endY = Number(end.y);
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const diameter = Math.hypot(dx, dy);
+      if (!Number.isFinite(diameter) || diameter <= 0) {
+        return null;
+      }
+
+      return {
+        center: this._normalizeCanonicalPoint({
+          x: startX + dx / 2,
+          y: startY + dy / 2
+        }),
+        radius: diameter / 2
       };
     }
 
@@ -1278,6 +1411,13 @@
         };
       }
 
+      if (shape.type === "circle" && shape.center) {
+        return {
+          x: HOP.projection.normalizeCanonicalX(shape.center.x),
+          y: this._normalizeY(shape.center.y)
+        };
+      }
+
       if (!Array.isArray(shape.points) || shape.points.length === 0) {
         return null;
       }
@@ -1313,6 +1453,10 @@
         }
         if (shape.type === "label" && shape.point) {
           aggregatePoints.push(shape.point);
+          return;
+        }
+        if (shape.type === "circle" && shape.center) {
+          aggregatePoints.push(shape.center);
           return;
         }
         if (Array.isArray(shape.points)) {
@@ -1360,6 +1504,13 @@
         };
       }
 
+      if (shape.type === "circle" && shape.center) {
+        return {
+          ...shape,
+          center: rotatePoint(shape.center)
+        };
+      }
+
       if (Array.isArray(shape.points) && shape.points.length) {
         return {
           ...shape,
@@ -1384,6 +1535,13 @@
         return {
           ...shape,
           point: normalizePoint(shape.point)
+        };
+      }
+
+      if (shape.type === "circle" && shape.center) {
+        return {
+          ...shape,
+          center: normalizePoint(shape.center)
         };
       }
 
@@ -1617,7 +1775,12 @@
         return;
       }
 
-      if (shape.type === "line" || shape.type === "rectangle" || shape.type === "polygon") {
+      if (
+        shape.type === "line" ||
+        shape.type === "rectangle" ||
+        shape.type === "polygon" ||
+        shape.type === "circle"
+      ) {
         this.selection.select(shapeId);
         this.clearSelectedEdge();
         this.setEditShapeId(shapeId);
@@ -1823,7 +1986,7 @@
 
         if (
           this.isAreaPickMode() &&
-          (shape.type === "rectangle" || shape.type === "polygon")
+          (shape.type === "rectangle" || shape.type === "polygon" || shape.type === "circle")
         ) {
           event.preventDefault();
           this.selection.select(shapeId);
@@ -1942,6 +2105,22 @@
         };
         this.svg.setPointerCapture(event.pointerId);
         this.requestRender();
+        return;
+      }
+
+      if (tool === HOP.constants.TOOL.CIRCLE) {
+        event.preventDefault();
+        this.pointerDrawing = {
+          pointerId: event.pointerId,
+          start: point
+        };
+        this.draft = {
+          type: "circle",
+          start: point,
+          end: point
+        };
+        this.svg.setPointerCapture(event.pointerId);
+        this.requestRender();
       }
     }
 
@@ -2009,7 +2188,16 @@
         const index = shapes.findIndex((shape) => shape.id === this.draggingVertex.shapeId);
         if (index >= 0) {
           const shape = { ...shapes[index] };
-          if (Array.isArray(shape.points) && shape.points[this.draggingVertex.vertexIndex]) {
+          if (shape.type === "circle" && shape.center) {
+            const nextRadius = this._circleRadiusFromPointer(shape.center, point);
+            if (Number.isFinite(nextRadius) && nextRadius > 1) {
+              shape.radius = nextRadius;
+            }
+            shapes[index] = shape;
+            this.draggingVertex.moved = true;
+            this.setShapes(shapes, { skipRender: true });
+            this.requestRender();
+          } else if (Array.isArray(shape.points) && shape.points[this.draggingVertex.vertexIndex]) {
             if (shape.type === "rectangle") {
               const baseShape =
                 this.draggingVertex.startShape &&
@@ -2139,6 +2327,16 @@
       if (tool === HOP.constants.TOOL.RECTANGLE && this.draft && this.pointerDrawing) {
         this.draft = {
           type: "rectangle",
+          start: this.pointerDrawing.start,
+          end: point
+        };
+        this.requestRender();
+        return;
+      }
+
+      if (tool === HOP.constants.TOOL.CIRCLE && this.draft && this.pointerDrawing) {
+        this.draft = {
+          type: "circle",
           start: this.pointerDrawing.start,
           end: point
         };
@@ -2293,6 +2491,16 @@
           type: "rectangle",
           points: HOP.geometry.rectPointsFromDiagonal(start, end)
         });
+      } else if (tool === HOP.constants.TOOL.CIRCLE) {
+        const circle = this._circleFromDiameterEndpoints(start, end);
+        if (circle && Number.isFinite(circle.radius) && circle.radius > 1) {
+          this._appendShape({
+            id: HOP.ids.createId("shape_circle"),
+            type: "circle",
+            center: circle.center,
+            radius: circle.radius
+          });
+        }
       }
 
       this.draft = null;
@@ -2484,7 +2692,12 @@
           }
         }
 
-        if (shape.type === "line" || shape.type === "rectangle" || shape.type === "polygon") {
+        if (
+          shape.type === "line" ||
+          shape.type === "rectangle" ||
+          shape.type === "polygon" ||
+          shape.type === "circle"
+        ) {
           const currentEdit = this.getEditShapeId();
           this.setEditShapeId(currentEdit === shape.id ? null : shape.id);
           this.clearSelectedEdge();

@@ -13,6 +13,7 @@
       CONNECTION: "connection",
       LINE: "line",
       RECTANGLE: "rectangle",
+      CIRCLE: "circle",
       POLYGON: "polygon",
       LABEL: "label"
     }),
@@ -23,6 +24,7 @@
       CONNECTION: "connection",
       LINE: "line",
       RECTANGLE: "rectangle",
+      CIRCLE: "circle",
       POLYGON: "polygon",
       LABEL: "label",
       TOGGLE_LENGTHS: "toggleLengths",

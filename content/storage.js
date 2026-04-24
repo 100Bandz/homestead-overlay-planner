@@ -72,6 +72,29 @@
       return clean;
     }
 
+    if (shape.type === "circle") {
+      const center = sanitizePoint(shape.center);
+      const radius = Number(shape.radius);
+      if (!center || !Number.isFinite(radius) || radius <= 0) {
+        return null;
+      }
+
+      clean.center = center;
+      clean.radius = radius;
+      const measurements = shape.measurements && typeof shape.measurements === "object"
+        ? shape.measurements
+        : {};
+      const rawEdgeVisibility = safeArray(measurements.edgeVisibility);
+      clean.measurements = {
+        edgeVisibility: [
+          typeof rawEdgeVisibility[0] === "boolean" ? rawEdgeVisibility[0] : true
+        ],
+        areaVisible:
+          typeof measurements.areaVisible === "boolean" ? measurements.areaVisible : true
+      };
+      return clean;
+    }
+
     const points = safeArray(shape.points).map(sanitizePoint).filter(Boolean);
     if (!points.length) {
       return null;

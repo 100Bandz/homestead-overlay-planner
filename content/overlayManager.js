@@ -52,6 +52,7 @@
         line: "l",
         polygon: "g",
         rectangle: "r",
+        circle: "o",
         label: "t",
         undo: "z",
         redo: "y",
@@ -554,6 +555,9 @@
       if (shapeType === "rectangle") {
         return "Rectangle";
       }
+      if (shapeType === "circle") {
+        return "Circle";
+      }
       if (shapeType === "polygon") {
         return "Polygon";
       }
@@ -606,6 +610,26 @@
           return [{ x: Number(shape.point.x), y: Number(shape.point.y) }];
         }
         return [];
+      }
+
+      if (shape.type === "circle") {
+        const center =
+          shape.center &&
+          Number.isFinite(shape.center.x) &&
+          Number.isFinite(shape.center.y)
+            ? { x: Number(shape.center.x), y: Number(shape.center.y) }
+            : null;
+        const radius = Number(shape.radius);
+        if (!center || !Number.isFinite(radius) || radius <= 0) {
+          return [];
+        }
+        return [
+          center,
+          { x: HOP.projection.normalizeCanonicalX(center.x + radius), y: center.y },
+          { x: HOP.projection.normalizeCanonicalX(center.x - radius), y: center.y },
+          { x: center.x, y: center.y + radius },
+          { x: center.x, y: center.y - radius }
+        ];
       }
 
       if (!Array.isArray(shape.points)) {
@@ -850,6 +874,43 @@
               Number.isFinite(rawReferenceScale) && rawReferenceScale > 0
                 ? rawReferenceScale
                 : this._currentMapScale()
+          }
+        };
+      }
+
+      if (shape.type === "circle") {
+        const center =
+          shape.center &&
+          Number.isFinite(shape.center.x) &&
+          Number.isFinite(shape.center.y)
+            ? {
+                x: HOP.projection.normalizeCanonicalX(Number(shape.center.x)),
+                y: Math.max(
+                  0,
+                  Math.min(
+                    HOP.constants.TILE_SIZE * Math.pow(2, HOP.constants.CANONICAL_ZOOM),
+                    Number(shape.center.y)
+                  )
+                )
+              }
+            : null;
+        const radius = Number(shape.radius);
+        if (!center || !Number.isFinite(radius) || radius <= 0) {
+          return null;
+        }
+
+        const raw = shape.measurements && typeof shape.measurements === "object"
+          ? shape.measurements
+          : {};
+        const rawVisibility = Array.isArray(raw.edgeVisibility) ? raw.edgeVisibility : [];
+
+        return {
+          ...shape,
+          center,
+          radius,
+          measurements: {
+            edgeVisibility: [typeof rawVisibility[0] === "boolean" ? rawVisibility[0] : true],
+            areaVisible: typeof raw.areaVisible === "boolean" ? raw.areaVisible : true
           }
         };
       }
@@ -1200,7 +1261,7 @@
       this._refreshToolbarStates();
 
       if (this.measurementSettings.areaToggleMode) {
-        this.ui.showStatus("Area toggle mode active. Click a rectangle/polygon to show/hide its area.");
+        this.ui.showStatus("Area toggle mode active. Click a rectangle, polygon, or circle to show/hide its area.");
       } else {
         this.ui.showStatus("Area toggle mode disabled.");
       }
@@ -1218,9 +1279,11 @@
       const shape = shapes[shapeIndex];
       if (
         !shape ||
-        (shape.type !== "rectangle" && shape.type !== "polygon") ||
-        !Array.isArray(shape.points) ||
-        shape.points.length < 3
+        (
+          shape.type !== "rectangle" &&
+          shape.type !== "polygon" &&
+          shape.type !== "circle"
+        )
       ) {
         return false;
       }
@@ -1228,7 +1291,21 @@
       const measurements = shape.measurements && typeof shape.measurements === "object"
         ? shape.measurements
         : {};
-      if (Array.isArray(measurements.openEdges) && measurements.openEdges.some(Boolean)) {
+      if (
+        shape.type !== "circle" &&
+        (
+          !Array.isArray(shape.points) ||
+          shape.points.length < 3
+        )
+      ) {
+        return false;
+      }
+
+      if (
+        shape.type !== "circle" &&
+        Array.isArray(measurements.openEdges) &&
+        measurements.openEdges.some(Boolean)
+      ) {
         this.ui.showStatus("Area labels are unavailable for open shapes.");
         return false;
       }
@@ -1253,6 +1330,9 @@
     }
 
     _shapeEdgeCount(shape) {
+      if (shape && shape.type === "circle") {
+        return 1;
+      }
       if (!shape || !Array.isArray(shape.points) || shape.points.length < 2) {
         return 0;
       }
@@ -1381,6 +1461,37 @@
     }
 
     _edgeEndpoints(shape, edgeIndex) {
+      if (
+        shape &&
+        shape.type === "circle" &&
+        shape.center &&
+        Number.isFinite(shape.center.x) &&
+        Number.isFinite(shape.center.y) &&
+        Number.isFinite(shape.radius) &&
+        shape.radius > 0
+      ) {
+        const center = {
+          x: HOP.projection.normalizeCanonicalX(shape.center.x),
+          y: Math.max(
+            0,
+            Math.min(
+              HOP.constants.TILE_SIZE * Math.pow(2, HOP.constants.CANONICAL_ZOOM),
+              Number(shape.center.y)
+            )
+          )
+        };
+        const radius = Number(shape.radius);
+        return {
+          startIndex: 0,
+          endIndex: 1,
+          start: center,
+          end: {
+            x: HOP.projection.normalizeCanonicalX(center.x + radius),
+            y: center.y
+          }
+        };
+      }
+
       if (!shape || !Array.isArray(shape.points) || shape.points.length < 2) {
         return null;
       }
@@ -1406,6 +1517,35 @@
     }
 
     _edgeLengthMeters(shape, edgeIndex) {
+      if (
+        shape &&
+        shape.type === "circle" &&
+        shape.center &&
+        Number.isFinite(shape.center.x) &&
+        Number.isFinite(shape.center.y) &&
+        Number.isFinite(shape.radius) &&
+        shape.radius > 0
+      ) {
+        const center = {
+          x: HOP.projection.normalizeCanonicalX(shape.center.x),
+          y: Math.max(
+            0,
+            Math.min(
+              HOP.constants.TILE_SIZE * Math.pow(2, HOP.constants.CANONICAL_ZOOM),
+              Number(shape.center.y)
+            )
+          )
+        };
+        const edgePoint = {
+          x: HOP.projection.normalizeCanonicalX(center.x + Number(shape.radius)),
+          y: center.y
+        };
+        const centerLatLng = HOP.projection.canonicalToLatLng(center);
+        const edgeLatLng = HOP.projection.canonicalToLatLng(edgePoint);
+        const radiusMeters = HOP.projection.latLngDistanceMeters(centerLatLng, edgeLatLng);
+        return 2 * radiusMeters;
+      }
+
       const endpoints = this._edgeEndpoints(shape, edgeIndex);
       if (!endpoints) {
         return 0;
@@ -1589,7 +1729,11 @@
       }
 
       const current = this._edgeLengthMeters(shape, edgeIndex);
-      const raw = window.prompt("Set side length (meters):", Number(current).toFixed(1));
+      const promptText =
+        shape && shape.type === "circle"
+          ? "Set diameter (meters):"
+          : "Set side length (meters):";
+      const raw = window.prompt(promptText, Number(current).toFixed(1));
       if (raw === null) {
         return false;
       }
@@ -1610,7 +1754,10 @@
       }
 
       const currentShape = this.shapes[shapeIndex];
-      if (!Array.isArray(currentShape.points) || currentShape.points.length < 2) {
+      if (
+        currentShape.type !== "circle" &&
+        (!Array.isArray(currentShape.points) || currentShape.points.length < 2)
+      ) {
         return false;
       }
 
@@ -1669,6 +1816,19 @@
         );
       } else if (mutable.type === "line") {
         mutable.points[1] = this._translatedPoint(mutable.points[1], deltaX, deltaY);
+      } else if (
+        mutable.type === "circle" &&
+        mutable.center &&
+        Number.isFinite(mutable.center.x) &&
+        Number.isFinite(mutable.center.y) &&
+        Number.isFinite(mutable.radius) &&
+        mutable.radius > 0
+      ) {
+        const nextRadius = Number(mutable.radius) * ratio;
+        if (!Number.isFinite(nextRadius) || nextRadius <= 0) {
+          return false;
+        }
+        mutable.radius = nextRadius;
       } else {
         const endIndex = endpoints.endIndex;
         mutable.points[endIndex] = this._translatedPoint(mutable.points[endIndex], deltaX, deltaY);
@@ -1680,7 +1840,11 @@
       });
       this.selection.select(shapeId);
       this._setSelectedEdge(shapeId, edgeIndex);
-      this.ui.showStatus(`Side length set to ${targetMeters.toFixed(1)} m.`);
+      if (currentShape.type === "circle") {
+        this.ui.showStatus(`Diameter set to ${targetMeters.toFixed(1)} m.`);
+      } else {
+        this.ui.showStatus(`Side length set to ${targetMeters.toFixed(1)} m.`);
+      }
       return true;
     }
 
@@ -1794,6 +1958,10 @@
         this._setTool(HOP.constants.TOOL.RECTANGLE);
         return true;
       }
+      if (action === "circle") {
+        this._setTool(HOP.constants.TOOL.CIRCLE);
+        return true;
+      }
       if (action === "label") {
         this._setTool(HOP.constants.TOOL.LABEL);
         return true;
@@ -1894,6 +2062,7 @@
         action === HOP.constants.TOOL.CONNECTION ||
         action === HOP.constants.TOOL.LINE ||
         action === HOP.constants.TOOL.RECTANGLE ||
+        action === HOP.constants.TOOL.CIRCLE ||
         action === HOP.constants.TOOL.POLYGON ||
         action === HOP.constants.TOOL.LABEL
       ) {

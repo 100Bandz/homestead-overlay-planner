@@ -1,6 +1,6 @@
 # Homestead Overlay Planner
 
-Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG planning overlay on top of Google Maps pages. You can draw homestead layouts (line, rectangle, polygon, and labels), save plans locally, and reload them later while keeping shapes anchored to the same map area during pan/zoom.
+Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG planning overlay on top of Google Maps pages. You can draw homestead layouts (line, rectangle, circle, polygon, and labels), save plans locally, and reload them later while keeping shapes anchored to the same map area during pan/zoom.
 
 ## What It Does
 
@@ -41,6 +41,7 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 - `Connection`
 - `Line`
 - `Rectangle`
+- `Circle`
 - `Polygon`
 - `Label`
 - `Lengths: On/Off`
@@ -58,7 +59,7 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 `Pan Mode` is the default tool when the overlay starts or when a plan is loaded.
 
 Copy/Paste shortcuts are also available while not typing:
-- `Ctrl/Cmd + C` to copy the selected line/rectangle/polygon/label
+- `Ctrl/Cmd + C` to copy the selected line/rectangle/circle/polygon/label
 - `Ctrl/Cmd + V` to paste a cloned shape
 - `Ctrl/Cmd + A` to select all shapes for group move
 - `Shift + Click` to add/remove shapes from selection
@@ -78,11 +79,11 @@ Copy/Paste shortcuts are also available while not typing:
   - Dragging a selected shape in lasso mode moves the selected group together.
   - Press `Delete`/`Backspace` to remove selected items.
 - `Select` mode:
-  - Drag line/rectangle/polygon/label to move.
+  - Drag line/rectangle/circle/polygon/label to move.
   - Drag selected shape/group to reposition.
   - Press `Delete`/`Backspace` to delete selected shape (and keep using **Delete Selected** button if preferred).
-  - Double-click line/rectangle/polygon to toggle vertex edit handles.
-  - Drag vertex handles to reshape line endpoints / polygon / rectangle geometry.
+  - Double-click line/rectangle/circle/polygon to toggle vertex edit handles.
+  - Drag vertex handles to reshape line endpoints / polygon / rectangle geometry, and adjust circle radius.
   - Rectangle corner drag preserves rectangle geometry (uniformly resizes while keeping right angles).
   - Vertex handles use precise hit targets with grab/grabbing cursor feedback.
   - Selected line/rectangle/polygon shows a rotate handle (`R`) that supports click-hold-drag fluid rotation.
@@ -103,6 +104,7 @@ Copy/Paste shortcuts are also available while not typing:
 ## Measurements
 
 - Line: length badge.
+- Circle: diameter badge and area badge.
 - Rectangle/Polygon: side lengths (outside shape) and area (inside shape).
 - Closed loops formed by connected line segments also show derived area.
 - Area badge placement avoids overlap with side-length badges and stays inside polygon interiors (including concave shapes).
@@ -130,6 +132,7 @@ Copy/Paste shortcuts are also available while not typing:
   - `Connection`
   - `Line`
   - `Rectangle`
+  - `Circle`
   - `Polygon`
   - `Label`
   - `Undo`
@@ -142,6 +145,7 @@ Copy/Paste shortcuts are also available while not typing:
   - `Exit`
 - Default new bindings:
   - `Lasso` = `Q`
+  - `Circle` = `O`
   - `Right-Angle Snap (Hold)` = `A`
 
 ## Store Assets

@@ -30,6 +30,7 @@
 
 #hop-overlay-root.hop-tool-line #hop-overlay-svg,
 #hop-overlay-root.hop-tool-rectangle #hop-overlay-svg,
+#hop-overlay-root.hop-tool-circle #hop-overlay-svg,
 #hop-overlay-root.hop-tool-polygon #hop-overlay-svg,
 #hop-overlay-root.hop-tool-label #hop-overlay-svg {
   cursor: crosshair;

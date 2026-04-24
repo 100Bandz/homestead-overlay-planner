@@ -31,6 +31,7 @@ const BINDING_ACTIONS = [
   { id: "line", label: "Line" },
   { id: "polygon", label: "Polygon" },
   { id: "rectangle", label: "Rectangle" },
+  { id: "circle", label: "Circle" },
   { id: "label", label: "Label" },
   { id: "undo", label: "Undo" },
   { id: "redo", label: "Redo" },
@@ -50,6 +51,7 @@ const DEFAULT_KEY_BINDINGS = Object.freeze({
   line: "l",
   polygon: "g",
   rectangle: "r",
+  circle: "o",
   label: "t",
   undo: "z",
   redo: "y",
@@ -334,7 +336,13 @@ function sanitizeShape(raw) {
   }
 
   const type = typeof raw.type === "string" ? raw.type : "";
-  if (type !== "line" && type !== "rectangle" && type !== "polygon" && type !== "label") {
+  if (
+    type !== "line" &&
+    type !== "rectangle" &&
+    type !== "circle" &&
+    type !== "polygon" &&
+    type !== "label"
+  ) {
     return null;
   }
 
@@ -351,6 +359,33 @@ function sanitizeShape(raw) {
       point,
       text: typeof raw.text === "string" ? raw.text : "",
       labelBox: sanitizeLabelBox(raw.labelBox)
+    };
+  }
+
+  if (type === "circle") {
+    const center = sanitizePoint(raw.center);
+    const radius = Number(raw.radius);
+    if (!center || !Number.isFinite(radius) || radius <= 0) {
+      return null;
+    }
+
+    const measurements = raw.measurements && typeof raw.measurements === "object"
+      ? raw.measurements
+      : {};
+    const edgeVisibilitySource = Array.isArray(measurements.edgeVisibility)
+      ? measurements.edgeVisibility
+      : [];
+
+    return {
+      id,
+      type,
+      center,
+      radius,
+      measurements: {
+        edgeVisibility: [edgeVisibilitySource[0] !== false],
+        areaVisible:
+          typeof measurements.areaVisible === "boolean" ? measurements.areaVisible : true
+      }
     };
   }
 

@@ -55,6 +55,7 @@
         { action: HOP.constants.TOOLBAR_ACTION.CONNECTION, label: "Connection" },
         { action: HOP.constants.TOOLBAR_ACTION.LINE, label: "Line" },
         { action: HOP.constants.TOOLBAR_ACTION.RECTANGLE, label: "Rectangle" },
+        { action: HOP.constants.TOOLBAR_ACTION.CIRCLE, label: "Circle" },
         { action: HOP.constants.TOOLBAR_ACTION.POLYGON, label: "Polygon" },
         { action: HOP.constants.TOOLBAR_ACTION.LABEL, label: "Label" },
         { action: HOP.constants.TOOLBAR_ACTION.TOGGLE_LENGTHS, label: "Lengths: On" },
@@ -185,6 +186,7 @@
         HOP.constants.TOOLBAR_ACTION.CONNECTION,
         HOP.constants.TOOLBAR_ACTION.LINE,
         HOP.constants.TOOLBAR_ACTION.RECTANGLE,
+        HOP.constants.TOOLBAR_ACTION.CIRCLE,
         HOP.constants.TOOLBAR_ACTION.POLYGON,
         HOP.constants.TOOLBAR_ACTION.LABEL
       ]);
@@ -226,6 +228,7 @@
         "hop-tool-connection",
         "hop-tool-line",
         "hop-tool-rectangle",
+        "hop-tool-circle",
         "hop-tool-polygon",
         "hop-tool-label"
       );
