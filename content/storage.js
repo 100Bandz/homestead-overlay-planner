@@ -146,14 +146,37 @@
     };
   }
 
+  function storageErrorMessage(error) {
+    if (error && typeof error.message === "string" && error.message.trim()) {
+      return error.message.trim();
+    }
+    return "unknown storage error";
+  }
+
   class PlanStorage {
-    async getAllPlans() {
+    async _readPlans(strict) {
       try {
         const data = await chrome.storage.local.get(STORAGE_KEY);
-        const plans = safeArray(data[STORAGE_KEY]).map(sanitizePlan).filter(Boolean);
-        return plans;
-      } catch (_error) {
+        return safeArray(data[STORAGE_KEY]).map(sanitizePlan).filter(Boolean);
+      } catch (error) {
+        if (strict) {
+          throw new Error(`Storage read failed: ${storageErrorMessage(error)}`);
+        }
         return [];
+      }
+    }
+
+    async getAllPlans() {
+      return this._readPlans(false);
+    }
+
+    async _writePlans(plans) {
+      try {
+        await chrome.storage.local.set({
+          [STORAGE_KEY]: plans
+        });
+      } catch (error) {
+        throw new Error(`Storage write failed: ${storageErrorMessage(error)}`);
       }
     }
 
@@ -168,7 +191,7 @@
         throw new Error("Invalid plan data");
       }
 
-      const plans = await this.getAllPlans();
+      const plans = await this._readPlans(true);
       const existingIndex = plans.findIndex((item) => item.id === cleaned.id);
 
       if (existingIndex >= 0) {
@@ -187,20 +210,16 @@
         });
       }
 
-      await chrome.storage.local.set({
-        [STORAGE_KEY]: plans
-      });
+      await this._writePlans(plans);
 
       return plans.find((item) => item.id === cleaned.id) || cleaned;
     }
 
     async deletePlan(planId) {
-      const plans = await this.getAllPlans();
+      const plans = await this._readPlans(true);
       const nextPlans = plans.filter((plan) => plan.id !== planId);
 
-      await chrome.storage.local.set({
-        [STORAGE_KEY]: nextPlans
-      });
+      await this._writePlans(nextPlans);
 
       return nextPlans.length !== plans.length;
     }

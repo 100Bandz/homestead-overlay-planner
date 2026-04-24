@@ -9,6 +9,8 @@
       this.status = null;
       this.statusText = null;
       this.statusActionButton = null;
+      this.statusDismissTimeoutId = 0;
+      this.statusHideTimeoutId = 0;
       this.navigator = null;
       this.navigatorToggleButton = null;
       this.navigatorList = null;
@@ -48,6 +50,7 @@
 
       const buttons = [
         { action: HOP.constants.TOOLBAR_ACTION.SELECT, label: "Select" },
+        { action: HOP.constants.TOOLBAR_ACTION.LASSO, label: "Lasso" },
         { action: HOP.constants.TOOLBAR_ACTION.PAN, label: "Pan Mode" },
         { action: HOP.constants.TOOLBAR_ACTION.CONNECTION, label: "Connection" },
         { action: HOP.constants.TOOLBAR_ACTION.LINE, label: "Line" },
@@ -79,7 +82,7 @@
       this.status = document.createElement("div");
       this.status.id = "hop-status";
       this.status.className = "hop-status";
-      this.status.hidden = true;
+      this.status.setAttribute("aria-hidden", "true");
 
       this.statusText = document.createElement("span");
       this.statusText.id = "hop-status-text";
@@ -177,6 +180,7 @@
 
       const toolActions = new Set([
         HOP.constants.TOOLBAR_ACTION.SELECT,
+        HOP.constants.TOOLBAR_ACTION.LASSO,
         HOP.constants.TOOLBAR_ACTION.PAN,
         HOP.constants.TOOLBAR_ACTION.CONNECTION,
         HOP.constants.TOOLBAR_ACTION.LINE,
@@ -218,6 +222,7 @@
       this.root.classList.remove(
         "hop-tool-pan",
         "hop-tool-select",
+        "hop-tool-lasso",
         "hop-tool-connection",
         "hop-tool-line",
         "hop-tool-rectangle",
@@ -240,7 +245,15 @@
       }
 
       const opts = options || {};
-      this.status.hidden = false;
+      if (this.statusDismissTimeoutId) {
+        window.clearTimeout(this.statusDismissTimeoutId);
+        this.statusDismissTimeoutId = 0;
+      }
+      if (this.statusHideTimeoutId) {
+        window.clearTimeout(this.statusHideTimeoutId);
+        this.statusHideTimeoutId = 0;
+      }
+
       this.statusText.textContent = message;
 
       this.statusActionButton.hidden = !opts.actionLabel;
@@ -250,16 +263,44 @@
       if (opts.actionLabel && typeof opts.action === "function") {
         this.statusActionButton.onclick = opts.action;
       }
+      this.status.setAttribute("aria-hidden", "false");
+      this.status.classList.add("is-visible");
+
+      const durationMsRaw = Number(opts.durationMs);
+      const durationMs =
+        Number.isFinite(durationMsRaw) && durationMsRaw >= 0 ? durationMsRaw : 4000;
+      if (durationMs > 0) {
+        this.statusDismissTimeoutId = window.setTimeout(() => {
+          this.statusDismissTimeoutId = 0;
+          this.clearStatus();
+        }, durationMs);
+      }
     }
 
     clearStatus() {
       if (!this.status) {
         return;
       }
-      this.status.hidden = true;
-      this.statusText.textContent = "";
-      this.statusActionButton.hidden = true;
-      this.statusActionButton.onclick = null;
+      if (this.statusDismissTimeoutId) {
+        window.clearTimeout(this.statusDismissTimeoutId);
+        this.statusDismissTimeoutId = 0;
+      }
+      if (this.statusHideTimeoutId) {
+        window.clearTimeout(this.statusHideTimeoutId);
+        this.statusHideTimeoutId = 0;
+      }
+
+      this.status.classList.remove("is-visible");
+      this.statusHideTimeoutId = window.setTimeout(() => {
+        this.statusHideTimeoutId = 0;
+        if (!this.status || this.status.classList.contains("is-visible")) {
+          return;
+        }
+        this.status.setAttribute("aria-hidden", "true");
+        this.statusText.textContent = "";
+        this.statusActionButton.hidden = true;
+        this.statusActionButton.onclick = null;
+      }, 240);
     }
 
     setNavigatorCollapsed(collapsed) {
@@ -614,6 +655,14 @@
       this.navigatorDragMoveHandler = null;
       this.navigatorDragEndHandler = null;
       this.navigatorStateChangeHandler = null;
+      if (this.statusDismissTimeoutId) {
+        window.clearTimeout(this.statusDismissTimeoutId);
+        this.statusDismissTimeoutId = 0;
+      }
+      if (this.statusHideTimeoutId) {
+        window.clearTimeout(this.statusHideTimeoutId);
+        this.statusHideTimeoutId = 0;
+      }
 
       if (this.root && this.root.parentNode) {
         this.root.parentNode.removeChild(this.root);

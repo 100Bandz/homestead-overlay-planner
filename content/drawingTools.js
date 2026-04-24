@@ -1,6 +1,7 @@
 (() => {
   const HOP = (window.HOP = window.HOP || {});
   const WORLD_SIZE = HOP.constants.TILE_SIZE * Math.pow(2, HOP.constants.CANONICAL_ZOOM);
+  const VERTEX_PICK_RADIUS_PX = 6.2;
 
   class DrawingTools {
     constructor(options) {
@@ -66,6 +67,7 @@
       this.draggingVertex = null;
       this.draggingRotate = null;
       this.connectionDraft = null;
+      this.polygonRightAngleSnapActive = false;
       this.lastEdgeMeasurementTap = null;
       this.boundPointerDown = this._onPointerDown.bind(this);
       this.boundPointerMove = this._onPointerMove.bind(this);
@@ -73,6 +75,7 @@
       this.boundClick = this._onClick.bind(this);
       this.boundDoubleClick = this._onDoubleClick.bind(this);
       this.boundKeyDown = this._onKeyDown.bind(this);
+      this.boundKeyUp = this._onKeyUp.bind(this);
     }
 
     attach() {
@@ -82,6 +85,7 @@
       this.svg.addEventListener("click", this.boundClick);
       this.svg.addEventListener("dblclick", this.boundDoubleClick);
       window.addEventListener("keydown", this.boundKeyDown);
+      window.addEventListener("keyup", this.boundKeyUp);
     }
 
     detach() {
@@ -91,6 +95,8 @@
       this.svg.removeEventListener("click", this.boundClick);
       this.svg.removeEventListener("dblclick", this.boundDoubleClick);
       window.removeEventListener("keydown", this.boundKeyDown);
+      window.removeEventListener("keyup", this.boundKeyUp);
+      this.polygonRightAngleSnapActive = false;
       this.cancelCurrentDrawing();
     }
 
@@ -111,6 +117,9 @@
       this.draggingRotate = null;
       this.connectionDraft = null;
       this.lastEdgeMeasurementTap = null;
+      if (this.svg) {
+        this.svg.style.cursor = "";
+      }
       this.requestRender();
     }
 
@@ -351,6 +360,92 @@
       return "";
     }
 
+    _isRightAngleSnapAction(action) {
+      return action === "rightAngleSnap";
+    }
+
+    _projectPolygonPointer(rawPoint) {
+      const point = rawPoint && typeof rawPoint === "object" ? rawPoint : null;
+      if (!point || !this.polygonRightAngleSnapActive) {
+        return point;
+      }
+
+      if (!this.draft || this.draft.type !== "polygon" || !Array.isArray(this.draft.points)) {
+        return point;
+      }
+
+      if (this.draft.points.length < 2) {
+        return point;
+      }
+
+      const view = this.getView();
+      if (!view) {
+        return point;
+      }
+
+      const anchorCanonical = this.draft.points[this.draft.points.length - 1];
+      const previousCanonical = this.draft.points[this.draft.points.length - 2];
+      if (!anchorCanonical || !previousCanonical) {
+        return point;
+      }
+
+      const anchor = HOP.projection.canonicalToScreen(anchorCanonical, view);
+      const previous = HOP.projection.canonicalToScreen(previousCanonical, view);
+      const rawScreen = HOP.projection.canonicalToScreen(point, view);
+
+      const inVec = {
+        x: anchor.x - previous.x,
+        y: anchor.y - previous.y
+      };
+      const rawVec = {
+        x: rawScreen.x - anchor.x,
+        y: rawScreen.y - anchor.y
+      };
+      const inLen = Math.hypot(inVec.x, inVec.y);
+      const rawLen = Math.hypot(rawVec.x, rawVec.y);
+      if (inLen < 1 || rawLen < 1) {
+        return point;
+      }
+
+      const incoming = {
+        x: inVec.x / inLen,
+        y: inVec.y / inLen
+      };
+      const perpendicular = {
+        x: -incoming.y,
+        y: incoming.x
+      };
+      const projection = rawVec.x * perpendicular.x + rawVec.y * perpendicular.y;
+      const direction = projection >= 0 ? 1 : -1;
+
+      const snappedScreen = {
+        x: anchor.x + perpendicular.x * direction * rawLen,
+        y: anchor.y + perpendicular.y * direction * rawLen
+      };
+
+      return HOP.projection.screenToCanonical(snappedScreen, view);
+    }
+
+    _setPolygonDraftPointer(rawPoint) {
+      if (!this.draft || this.draft.type !== "polygon") {
+        return;
+      }
+      this.draft.rawPointer = rawPoint;
+      this.draft.pointer = this._projectPolygonPointer(rawPoint);
+    }
+
+    _refreshPolygonDraftPointer() {
+      if (!this.draft || this.draft.type !== "polygon") {
+        return;
+      }
+      const rawPoint = this.draft.rawPointer || this.draft.pointer;
+      if (!rawPoint) {
+        return;
+      }
+      this.draft.pointer = this._projectPolygonPointer(rawPoint);
+      this.requestRender();
+    }
+
     _onKeyDown(event) {
       if (this._isTypingContext()) {
         return;
@@ -398,6 +493,15 @@
 
       const shortcut = this._eventToShortcut(event);
       const action = this._matchShortcutAction(shortcut);
+      if (this._isRightAngleSnapAction(action)) {
+        const wasActive = this.polygonRightAngleSnapActive;
+        this.polygonRightAngleSnapActive = true;
+        if (!wasActive) {
+          this._refreshPolygonDraftPointer();
+        }
+        event.preventDefault();
+        return;
+      }
       if (action) {
         const handled = this.triggerShortcutAction(action);
         if (handled) {
@@ -416,7 +520,8 @@
       }
 
       if (
-        this.getTool() === HOP.constants.TOOL.SELECT &&
+        (this.getTool() === HOP.constants.TOOL.SELECT ||
+          this.getTool() === HOP.constants.TOOL.LASSO) &&
         (event.key === "Delete" || event.key === "Backspace") &&
         (this.selection.getSelectedId() || this.getSelectedEdge())
       ) {
@@ -439,11 +544,332 @@
       }
     }
 
+    _onKeyUp(event) {
+      if (this._isTypingContext()) {
+        return;
+      }
+
+      const shortcut = this._eventToShortcut(event);
+      const action = this._matchShortcutAction(shortcut);
+      if (!this._isRightAngleSnapAction(action)) {
+        return;
+      }
+
+      const wasActive = this.polygonRightAngleSnapActive;
+      this.polygonRightAngleSnapActive = false;
+      if (wasActive) {
+        this._refreshPolygonDraftPointer();
+      }
+      event.preventDefault();
+    }
+
     _screenPointFromEvent(event) {
       return {
         x: event.clientX,
         y: event.clientY
       };
+    }
+
+    _updateSelectCursorFromEvent(event) {
+      if (!this.svg) {
+        return;
+      }
+
+      const tool = this.getTool();
+      if (tool !== HOP.constants.TOOL.SELECT && tool !== HOP.constants.TOOL.LASSO) {
+        this.svg.style.cursor = "";
+        return;
+      }
+
+      if (tool === HOP.constants.TOOL.LASSO) {
+        if (this.draggingShape) {
+          this.svg.style.cursor = "grabbing";
+          return;
+        }
+
+        const shapeId = this._findShapeIdFromEventTarget(event ? event.target : null);
+        const isSelected =
+          shapeId &&
+          this.selection &&
+          typeof this.selection.has === "function"
+            ? this.selection.has(shapeId)
+            : shapeId && this.selection.getSelectedId && this.selection.getSelectedId() === shapeId;
+        this.svg.style.cursor = isSelected ? "grab" : "";
+        return;
+      }
+
+      if (this.draggingVertex) {
+        this.svg.style.cursor = "grabbing";
+        return;
+      }
+
+      const screenPoint = this._screenPointFromEvent(event);
+      const nearbyVertex = this._findNearestEditableVertexAtScreenPoint(
+        screenPoint,
+        VERTEX_PICK_RADIUS_PX
+      );
+      this.svg.style.cursor = nearbyVertex ? "grab" : "";
+    }
+
+    _clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    _screenRectFromCanonical(start, end, view) {
+      if (!start || !end || !view) {
+        return null;
+      }
+      const a = HOP.projection.canonicalToScreen(start, view);
+      const b = HOP.projection.canonicalToScreen(end, view);
+      const left = Math.min(a.x, b.x);
+      const right = Math.max(a.x, b.x);
+      const top = Math.min(a.y, b.y);
+      const bottom = Math.max(a.y, b.y);
+      return {
+        left,
+        top,
+        right,
+        bottom,
+        width: Math.max(0, right - left),
+        height: Math.max(0, bottom - top)
+      };
+    }
+
+    _pointInScreenRect(point, rect) {
+      if (!point || !rect) {
+        return false;
+      }
+      return (
+        point.x >= rect.left &&
+        point.x <= rect.right &&
+        point.y >= rect.top &&
+        point.y <= rect.bottom
+      );
+    }
+
+    _rectsIntersect(a, b) {
+      if (!a || !b) {
+        return false;
+      }
+      return !(a.right < b.left || b.right < a.left || a.bottom < b.top || b.bottom < a.top);
+    }
+
+    _cross(a, b, c) {
+      return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    }
+
+    _onSegment(a, b, p) {
+      const eps = 1e-6;
+      return (
+        p.x >= Math.min(a.x, b.x) - eps &&
+        p.x <= Math.max(a.x, b.x) + eps &&
+        p.y >= Math.min(a.y, b.y) - eps &&
+        p.y <= Math.max(a.y, b.y) + eps
+      );
+    }
+
+    _segmentsIntersect(a, b, c, d) {
+      const eps = 1e-6;
+      const abC = this._cross(a, b, c);
+      const abD = this._cross(a, b, d);
+      const cdA = this._cross(c, d, a);
+      const cdB = this._cross(c, d, b);
+
+      if (
+        ((abC > eps && abD < -eps) || (abC < -eps && abD > eps)) &&
+        ((cdA > eps && cdB < -eps) || (cdA < -eps && cdB > eps))
+      ) {
+        return true;
+      }
+
+      if (Math.abs(abC) <= eps && this._onSegment(a, b, c)) {
+        return true;
+      }
+      if (Math.abs(abD) <= eps && this._onSegment(a, b, d)) {
+        return true;
+      }
+      if (Math.abs(cdA) <= eps && this._onSegment(c, d, a)) {
+        return true;
+      }
+      if (Math.abs(cdB) <= eps && this._onSegment(c, d, b)) {
+        return true;
+      }
+
+      return false;
+    }
+
+    _segmentIntersectsRect(a, b, rect) {
+      if (!a || !b || !rect) {
+        return false;
+      }
+      if (this._pointInScreenRect(a, rect) || this._pointInScreenRect(b, rect)) {
+        return true;
+      }
+
+      const topLeft = { x: rect.left, y: rect.top };
+      const topRight = { x: rect.right, y: rect.top };
+      const bottomRight = { x: rect.right, y: rect.bottom };
+      const bottomLeft = { x: rect.left, y: rect.bottom };
+
+      return (
+        this._segmentsIntersect(a, b, topLeft, topRight) ||
+        this._segmentsIntersect(a, b, topRight, bottomRight) ||
+        this._segmentsIntersect(a, b, bottomRight, bottomLeft) ||
+        this._segmentsIntersect(a, b, bottomLeft, topLeft)
+      );
+    }
+
+    _labelRectForLasso(shape, view) {
+      if (!shape || shape.type !== "label" || !shape.point || !view) {
+        return null;
+      }
+
+      const anchor = HOP.projection.canonicalToScreen(shape.point, view);
+      const source = shape.labelBox && typeof shape.labelBox === "object" ? shape.labelBox : {};
+      const baseWidth = Number(source.width);
+      const baseHeight = Number(source.height);
+      const baseOffsetX = Number(source.offsetX);
+      const baseOffsetY = Number(source.offsetY);
+      const currentScale =
+        Number.isFinite(Number(view.scale)) && Number(view.scale) > 0 ? Number(view.scale) : 1;
+      const referenceScaleRaw = Number(source.referenceScale);
+      const referenceScale =
+        Number.isFinite(referenceScaleRaw) && referenceScaleRaw > 0
+          ? referenceScaleRaw
+          : currentScale;
+      const zoomFactor = this._clamp(referenceScale / currentScale, 0.35, 1);
+      const width = Math.max(24, Math.min(360, (Number.isFinite(baseWidth) ? baseWidth : 96) * zoomFactor));
+      const height = Math.max(12, Math.min(120, (Number.isFinite(baseHeight) ? baseHeight : 24) * zoomFactor));
+      const boxX = anchor.x + (Number.isFinite(baseOffsetX) ? baseOffsetX : 10) * zoomFactor;
+      const boxY = anchor.y + (Number.isFinite(baseOffsetY) ? baseOffsetY : -28) * zoomFactor;
+
+      return {
+        left: boxX,
+        top: boxY,
+        right: boxX + width,
+        bottom: boxY + height
+      };
+    }
+
+    _shapeIntersectsLassoRect(shape, rect, view) {
+      if (!shape || !rect || !view) {
+        return false;
+      }
+
+      if (shape.type === "label" && shape.point) {
+        const anchor = HOP.projection.canonicalToScreen(shape.point, view);
+        if (this._pointInScreenRect(anchor, rect)) {
+          return true;
+        }
+        const labelRect = this._labelRectForLasso(shape, view);
+        return this._rectsIntersect(rect, labelRect);
+      }
+
+      if (!Array.isArray(shape.points) || shape.points.length < 2) {
+        return false;
+      }
+
+      const screenPoints = shape.points.map((point) => HOP.projection.canonicalToScreen(point, view));
+      if (screenPoints.some((point) => this._pointInScreenRect(point, rect))) {
+        return true;
+      }
+
+      for (let i = 0; i < screenPoints.length; i += 1) {
+        const next = shape.type === "line" ? i + 1 : (i + 1) % screenPoints.length;
+        if (next >= screenPoints.length) {
+          continue;
+        }
+        if (this._segmentIntersectsRect(screenPoints[i], screenPoints[next], rect)) {
+          return true;
+        }
+      }
+
+      if (
+        (shape.type === "rectangle" || shape.type === "polygon") &&
+        screenPoints.length >= 3
+      ) {
+        const center = {
+          x: (rect.left + rect.right) / 2,
+          y: (rect.top + rect.bottom) / 2
+        };
+        if (HOP.geometry.pointInPolygon(center, screenPoints)) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    _collectShapeIdsInLasso(start, end) {
+      const view = this.getView();
+      if (!view) {
+        return [];
+      }
+
+      const rect = this._screenRectFromCanonical(start, end, view);
+      if (!rect || (rect.width < 1 && rect.height < 1)) {
+        return [];
+      }
+
+      return this.getShapes()
+        .filter((shape) => shape && this._shapeIntersectsLassoRect(shape, rect, view))
+        .map((shape) => shape.id);
+    }
+
+    _applyLassoSelection(pointerDrawing, end, screenDistance) {
+      const drag = pointerDrawing && typeof pointerDrawing === "object" ? pointerDrawing : {};
+      const start = drag.start || null;
+      if (!start || !end) {
+        return;
+      }
+
+      const append = drag.appendSelection === true;
+      const startTargetShapeId =
+        typeof drag.startTargetShapeId === "string" ? drag.startTargetShapeId : "";
+
+      if (screenDistance < 4) {
+        if (startTargetShapeId) {
+          if (append && this.selection && typeof this.selection.has === "function") {
+            if (this.selection.has(startTargetShapeId)) {
+              this.selection.remove(startTargetShapeId);
+            } else if (this.selection && typeof this.selection.add === "function") {
+              this.selection.add(startTargetShapeId);
+            }
+          } else {
+            this.selection.select(startTargetShapeId);
+          }
+        } else if (!append) {
+          this.selection.clear();
+        }
+        this.clearSelectedEdge();
+        this.setEditShapeId(null);
+        return;
+      }
+
+      const hitIds = this._collectShapeIdsInLasso(start, end);
+      this.clearSelectedEdge();
+      this.setEditShapeId(null);
+
+      if (!hitIds.length) {
+        if (!append) {
+          this.selection.clear();
+        }
+        this.reportStatus("Lasso selected 0 shapes.");
+        return;
+      }
+
+      if (this.selection && typeof this.selection.selectMany === "function") {
+        this.selection.selectMany(hitIds, {
+          append,
+          primaryId: hitIds[hitIds.length - 1]
+        });
+      } else {
+        this.selection.select(hitIds[hitIds.length - 1]);
+      }
+
+      this.reportStatus(
+        `Lasso selected ${hitIds.length} shape${hitIds.length === 1 ? "" : "s"}.`
+      );
     }
 
     _canonicalPointFromEvent(event) {
@@ -586,6 +1012,78 @@
       };
     }
 
+    _findNearestEditableVertexAtScreenPoint(screenPoint, maxDistancePx) {
+      if (!screenPoint || !Number.isFinite(screenPoint.x) || !Number.isFinite(screenPoint.y)) {
+        return null;
+      }
+
+      const view = this.getView ? this.getView() : null;
+      if (!view) {
+        return null;
+      }
+
+      const selectedIds =
+        this.selection && typeof this.selection.getSelectedIds === "function"
+          ? this.selection.getSelectedIds()
+          : [this.selection && this.selection.getSelectedId ? this.selection.getSelectedId() : null]
+              .filter(Boolean);
+      const editShapeId = this.getEditShapeId ? this.getEditShapeId() : null;
+      const candidateIds = new Set(
+        selectedIds.filter((id) => typeof id === "string" && id)
+      );
+      if (typeof editShapeId === "string" && editShapeId) {
+        candidateIds.add(editShapeId);
+      }
+      if (!candidateIds.size) {
+        return null;
+      }
+
+      const maxDistance = Number.isFinite(maxDistancePx) && maxDistancePx > 0 ? maxDistancePx : 10;
+      let best = null;
+      const shapes = this.getShapes();
+      for (let i = 0; i < shapes.length; i += 1) {
+        const shape = shapes[i];
+        if (!shape || !candidateIds.has(shape.id)) {
+          continue;
+        }
+        if (
+          (shape.type !== "line" && shape.type !== "rectangle" && shape.type !== "polygon") ||
+          !Array.isArray(shape.points)
+        ) {
+          continue;
+        }
+
+        for (let vertexIndex = 0; vertexIndex < shape.points.length; vertexIndex += 1) {
+          const vertex = shape.points[vertexIndex];
+          if (!vertex) {
+            continue;
+          }
+          const vertexScreen = HOP.projection.canonicalToScreen(vertex, view);
+          const distance = HOP.geometry.distance(screenPoint, vertexScreen);
+          if (distance > maxDistance) {
+            continue;
+          }
+
+          if (!best || distance < best.distance) {
+            best = {
+              shapeId: shape.id,
+              vertexIndex,
+              distance
+            };
+          }
+        }
+      }
+
+      if (!best) {
+        return null;
+      }
+
+      return {
+        shapeId: best.shapeId,
+        vertexIndex: best.vertexIndex
+      };
+    }
+
     _findConnectionEndpointFromTarget(target) {
       const elementTarget = this._elementTarget(target);
       const node =
@@ -628,6 +1126,92 @@
 
     _normalizeY(value) {
       return Math.max(0, Math.min(WORLD_SIZE, value));
+    }
+
+    _normalizeCanonicalPoint(point) {
+      return {
+        x: HOP.projection.normalizeCanonicalX(point.x),
+        y: this._normalizeY(point.y)
+      };
+    }
+
+    _unwrapCanonicalPointAround(anchorPoint, point) {
+      return {
+        x: anchorPoint.x + HOP.projection.wrapDeltaX(point.x - anchorPoint.x),
+        y: Number(point.y)
+      };
+    }
+
+    _resizeRectangleFromCorner(startShape, cornerIndex, dragPoint) {
+      const shape = startShape && typeof startShape === "object" ? startShape : null;
+      const points = shape && Array.isArray(shape.points) ? shape.points : null;
+      const index = Number(cornerIndex);
+      if (!points || points.length !== 4 || !Number.isInteger(index) || index < 0 || index > 3) {
+        return null;
+      }
+
+      const oppositeIndex = (index + 2) % 4;
+      const adjacentAIndex = (oppositeIndex + 1) % 4;
+      const adjacentBIndex = (oppositeIndex + 3) % 4;
+      const oppositePoint = points[oppositeIndex];
+      if (!oppositePoint || !dragPoint) {
+        return null;
+      }
+
+      const unwrap = (point) => this._unwrapCanonicalPointAround(oppositePoint, point);
+      const pOpp = unwrap(points[oppositeIndex]);
+      const pAdjA = unwrap(points[adjacentAIndex]);
+      const pAdjB = unwrap(points[adjacentBIndex]);
+      const pDrag = unwrap(dragPoint);
+      const pCornerStart = unwrap(points[index]);
+
+      const vecA = { x: pAdjA.x - pOpp.x, y: pAdjA.y - pOpp.y };
+      const vecB = { x: pAdjB.x - pOpp.x, y: pAdjB.y - pOpp.y };
+      const lenA = Math.hypot(vecA.x, vecA.y);
+      const lenB = Math.hypot(vecB.x, vecB.y);
+      if (!Number.isFinite(lenA) || !Number.isFinite(lenB) || lenA < 1e-6 || lenB < 1e-6) {
+        return null;
+      }
+
+      const unitA = { x: vecA.x / lenA, y: vecA.y / lenA };
+      const unitB = { x: vecB.x / lenB, y: vecB.y / lenB };
+      const dot = (a, b) => a.x * b.x + a.y * b.y;
+      const dragFromOpp = { x: pDrag.x - pOpp.x, y: pDrag.y - pOpp.y };
+      const cornerFromOpp = { x: pCornerStart.x - pOpp.x, y: pCornerStart.y - pOpp.y };
+
+      const signA = dot(cornerFromOpp, unitA) >= 0 ? 1 : -1;
+      const signB = dot(cornerFromOpp, unitB) >= 0 ? 1 : -1;
+      const minimumCanonical = 4;
+
+      let projA = dot(dragFromOpp, unitA);
+      let projB = dot(dragFromOpp, unitB);
+      if (signA * projA < minimumCanonical) {
+        projA = signA * minimumCanonical;
+      }
+      if (signB * projB < minimumCanonical) {
+        projB = signB * minimumCanonical;
+      }
+
+      const nextOpp = pOpp;
+      const nextAdjA = {
+        x: pOpp.x + unitA.x * projA,
+        y: pOpp.y + unitA.y * projA
+      };
+      const nextAdjB = {
+        x: pOpp.x + unitB.x * projB,
+        y: pOpp.y + unitB.y * projB
+      };
+      const nextCorner = {
+        x: pOpp.x + unitA.x * projA + unitB.x * projB,
+        y: pOpp.y + unitA.y * projA + unitB.y * projB
+      };
+
+      const nextPoints = points.map((point) => this._normalizeCanonicalPoint(point));
+      nextPoints[oppositeIndex] = this._normalizeCanonicalPoint(nextOpp);
+      nextPoints[adjacentAIndex] = this._normalizeCanonicalPoint(nextAdjA);
+      nextPoints[adjacentBIndex] = this._normalizeCanonicalPoint(nextAdjB);
+      nextPoints[index] = this._normalizeCanonicalPoint(nextCorner);
+      return nextPoints;
     }
 
     _currentViewScale() {
@@ -956,26 +1540,28 @@
         this.draft = {
           type: "polygon",
           points: [point],
-          pointer: point
+          pointer: point,
+          rawPointer: point
         };
         this.requestRender();
         return;
       }
 
       const points = this.draft.points;
+      const projectedPoint = this._projectPolygonPointer(point) || point;
       const view = this.getView();
       if (view && points.length) {
         const lastScreen = HOP.projection.canonicalToScreen(points[points.length - 1], view);
-        const nextScreen = HOP.projection.canonicalToScreen(point, view);
+        const nextScreen = HOP.projection.canonicalToScreen(projectedPoint, view);
         if (HOP.geometry.distance(lastScreen, nextScreen) < 3) {
-          this.draft.pointer = point;
+          this._setPolygonDraftPointer(point);
           this.requestRender();
           return;
         }
       }
 
-      points.push(point);
-      this.draft.pointer = point;
+      points.push(projectedPoint);
+      this._setPolygonDraftPointer(point);
       this.requestRender();
     }
 
@@ -986,12 +1572,13 @@
 
       const view = this.getView();
       const points = this.draft.points.slice();
+      const projectedPoint = this._projectPolygonPointer(point) || point;
 
       if (point && view && points.length) {
         const lastScreen = HOP.projection.canonicalToScreen(points[points.length - 1], view);
-        const finishScreen = HOP.projection.canonicalToScreen(point, view);
+        const finishScreen = HOP.projection.canonicalToScreen(projectedPoint, view);
         if (HOP.geometry.distance(lastScreen, finishScreen) >= 3) {
-          points.push(point);
+          points.push(projectedPoint);
         }
       }
 
@@ -1038,12 +1625,42 @@
           pointerId,
           shapeId,
           vertexIndex,
+          startShape: JSON.parse(JSON.stringify(shape)),
           startShapesSnapshot: this._cloneShapes(this.getShapes()),
           moved: false
         };
+        this.svg.style.cursor = "grabbing";
         this.svg.setPointerCapture(pointerId);
         this.requestRender();
       }
+    }
+
+    _startShapeDrag(pointerId, shape, point) {
+      if (!shape || !point) {
+        return;
+      }
+
+      const groupShapeIds = this._composeDragGroupIds(shape);
+      const startShapesById = {};
+      const shapes = this.getShapes();
+      groupShapeIds.forEach((id) => {
+        const member = shapes.find((candidate) => candidate.id === id);
+        if (member) {
+          startShapesById[id] = JSON.parse(JSON.stringify(member));
+        }
+      });
+
+      this.draggingShape = {
+        shapeId: shape.id,
+        pointerId,
+        startPoint: point,
+        startShape: JSON.parse(JSON.stringify(shape)),
+        groupShapeIds,
+        startShapesById,
+        startShapesSnapshot: this._cloneShapes(this.getShapes()),
+        moved: false
+      };
+      this.svg.setPointerCapture(pointerId);
     }
 
     _onPointerDown(event) {
@@ -1056,10 +1673,22 @@
         this.connectionDraft = null;
       }
       const point = this._canonicalPointFromEvent(event);
+      const screenPoint = this._screenPointFromEvent(event);
+      this._updateSelectCursorFromEvent(event);
 
       if (tool === HOP.constants.TOOL.SELECT) {
         const edgeMeasurement = this._findEdgeMeasurementFromTarget(event.target);
         if (edgeMeasurement) {
+          const nearbyVertex = this._findNearestEditableVertexAtScreenPoint(
+            screenPoint,
+            VERTEX_PICK_RADIUS_PX
+          );
+          if (nearbyVertex) {
+            event.preventDefault();
+            this._startVertexEdit(event.pointerId, nearbyVertex.shapeId, nearbyVertex.vertexIndex);
+            return;
+          }
+
           event.stopPropagation();
           this.selection.select(edgeMeasurement.shapeId);
           this.setSelectedEdge(edgeMeasurement.shapeId, edgeMeasurement.edgeIndex);
@@ -1083,6 +1712,16 @@
         if (vertexHandle) {
           event.preventDefault();
           this._startVertexEdit(event.pointerId, vertexHandle.shapeId, vertexHandle.vertexIndex);
+          return;
+        }
+
+        const nearbyVertex = this._findNearestEditableVertexAtScreenPoint(
+          screenPoint,
+          VERTEX_PICK_RADIUS_PX
+        );
+        if (nearbyVertex) {
+          event.preventDefault();
+          this._startVertexEdit(event.pointerId, nearbyVertex.shapeId, nearbyVertex.vertexIndex);
           return;
         }
 
@@ -1221,29 +1860,51 @@
         this.clearSelectedEdge();
 
         if (shape && point) {
-          const groupShapeIds = this._composeDragGroupIds(shape);
-          const startShapesById = {};
-          const shapes = this.getShapes();
-          groupShapeIds.forEach((id) => {
-            const member = shapes.find((candidate) => candidate.id === id);
-            if (member) {
-              startShapesById[id] = JSON.parse(JSON.stringify(member));
-            }
-          });
-
-          this.draggingShape = {
-            shapeId,
-            pointerId: event.pointerId,
-            startPoint: point,
-            startShape: JSON.parse(JSON.stringify(shape)),
-            groupShapeIds,
-            startShapesById,
-            startShapesSnapshot: this._cloneShapes(this.getShapes()),
-            moved: false
-          };
-          this.svg.setPointerCapture(event.pointerId);
+          this._startShapeDrag(event.pointerId, shape, point);
         }
 
+        this.requestRender();
+        return;
+      }
+
+      if (tool === HOP.constants.TOOL.LASSO) {
+        if (!point) {
+          return;
+        }
+
+        const shapeId = this._findShapeIdFromEventTarget(event.target);
+        const isSelected =
+          shapeId &&
+          this.selection &&
+          typeof this.selection.has === "function"
+            ? this.selection.has(shapeId)
+            : shapeId && this.selection.getSelectedId && this.selection.getSelectedId() === shapeId;
+
+        if (shapeId && isSelected) {
+          const shape = this._findShapeById(shapeId);
+          if (shape) {
+            event.preventDefault();
+            this.clearSelectedEdge();
+            this._startShapeDrag(event.pointerId, shape, point);
+            this._updateSelectCursorFromEvent(event);
+            this.requestRender();
+            return;
+          }
+        }
+
+        event.preventDefault();
+        this.pointerDrawing = {
+          pointerId: event.pointerId,
+          start: point,
+          appendSelection: !!event.shiftKey,
+          startTargetShapeId: shapeId || ""
+        };
+        this.draft = {
+          type: "lasso",
+          start: point,
+          end: point
+        };
+        this.svg.setPointerCapture(event.pointerId);
         this.requestRender();
         return;
       }
@@ -1291,6 +1952,7 @@
       }
 
       const tool = this.getTool();
+      this._updateSelectCursorFromEvent(event);
 
       if (
         tool === HOP.constants.TOOL.SELECT &&
@@ -1348,9 +2010,29 @@
         if (index >= 0) {
           const shape = { ...shapes[index] };
           if (Array.isArray(shape.points) && shape.points[this.draggingVertex.vertexIndex]) {
-            const nextPoints = shape.points.slice();
-            nextPoints[this.draggingVertex.vertexIndex] = point;
-            shape.points = nextPoints;
+            if (shape.type === "rectangle") {
+              const baseShape =
+                this.draggingVertex.startShape &&
+                this.draggingVertex.startShape.type === "rectangle"
+                  ? this.draggingVertex.startShape
+                  : shape;
+              const resized = this._resizeRectangleFromCorner(
+                baseShape,
+                this.draggingVertex.vertexIndex,
+                point
+              );
+              if (resized && resized.length === 4) {
+                shape.points = resized;
+              } else {
+                const nextPoints = shape.points.slice();
+                nextPoints[this.draggingVertex.vertexIndex] = point;
+                shape.points = nextPoints;
+              }
+            } else {
+              const nextPoints = shape.points.slice();
+              nextPoints[this.draggingVertex.vertexIndex] = point;
+              shape.points = nextPoints;
+            }
             shapes[index] = shape;
             this.draggingVertex.moved = true;
             this.setShapes(shapes, { skipRender: true });
@@ -1405,7 +2087,7 @@
       }
 
       if (
-        tool === HOP.constants.TOOL.SELECT &&
+        (tool === HOP.constants.TOOL.SELECT || tool === HOP.constants.TOOL.LASSO) &&
         this.draggingShape &&
         this.draggingShape.pointerId === event.pointerId
       ) {
@@ -1464,8 +2146,18 @@
         return;
       }
 
+      if (tool === HOP.constants.TOOL.LASSO && this.draft && this.pointerDrawing) {
+        this.draft = {
+          type: "lasso",
+          start: this.pointerDrawing.start,
+          end: point
+        };
+        this.requestRender();
+        return;
+      }
+
       if (tool === HOP.constants.TOOL.POLYGON && this.draft && this.draft.type === "polygon") {
-        this.draft.pointer = point;
+        this._setPolygonDraftPointer(point);
         this.requestRender();
       }
     }
@@ -1505,6 +2197,7 @@
           });
         }
         this.draggingVertex = null;
+        this._updateSelectCursorFromEvent(event);
         this.requestRender();
         return;
       }
@@ -1528,7 +2221,7 @@
       }
 
       if (
-        tool === HOP.constants.TOOL.SELECT &&
+        (tool === HOP.constants.TOOL.SELECT || tool === HOP.constants.TOOL.LASSO) &&
         this.draggingShape &&
         this.draggingShape.pointerId === event.pointerId
       ) {
@@ -1541,11 +2234,15 @@
           });
         }
         this.draggingShape = null;
+        this._updateSelectCursorFromEvent(event);
         this.requestRender();
         return;
       }
 
       if (!this.pointerDrawing || this.pointerDrawing.pointerId !== event.pointerId) {
+        if (tool !== HOP.constants.TOOL.SELECT && this.svg) {
+          this.svg.style.cursor = "";
+        }
         return;
       }
 
@@ -1555,7 +2252,8 @@
         return;
       }
 
-      const start = this.pointerDrawing.start;
+      const pointerDrawing = this.pointerDrawing;
+      const start = pointerDrawing.start;
       this.pointerDrawing = null;
       this.svg.releasePointerCapture(event.pointerId);
 
@@ -1568,6 +2266,14 @@
       const startScreen = HOP.projection.canonicalToScreen(start, view);
       const endScreen = HOP.projection.canonicalToScreen(end, view);
       const screenDistance = HOP.geometry.distance(startScreen, endScreen);
+
+      if (tool === HOP.constants.TOOL.LASSO) {
+        this._applyLassoSelection(pointerDrawing, end, screenDistance);
+        this.draft = null;
+        this._updateSelectCursorFromEvent(event);
+        this.requestRender();
+        return;
+      }
 
       if (screenDistance < 4) {
         this.draft = null;

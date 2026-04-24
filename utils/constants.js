@@ -8,6 +8,7 @@
     MAX_MERCATOR_LAT: 85.05112878,
     TOOL: Object.freeze({
       SELECT: "select",
+      LASSO: "lasso",
       PAN: "pan",
       CONNECTION: "connection",
       LINE: "line",
@@ -17,6 +18,7 @@
     }),
     TOOLBAR_ACTION: Object.freeze({
       SELECT: "select",
+      LASSO: "lasso",
       PAN: "pan",
       CONNECTION: "connection",
       LINE: "line",

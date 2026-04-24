@@ -285,10 +285,10 @@
 
       if (edgeMeta) {
         const hitRect = createSvgElement("rect", {
-          x: -width / 2 - 5,
-          y: -height / 2 - 4,
-          width: width + 10,
-          height: height + 8,
+          x: -width / 2 - 1,
+          y: -height / 2 - 1,
+          width: width + 2,
+          height: height + 2,
           class: "hop-edge-measurement-hit"
         });
         hitRect.setAttribute("data-edge-measurement", "true");
@@ -343,6 +343,38 @@
       return group;
     }
 
+    _edgeBadgeHalfDiagonal(text) {
+      const font = "600 11px 'Avenir Next', 'Segoe UI', sans-serif";
+      const width = Math.max(36, this._measureTextWidth(text, font) + 10);
+      const height = 18;
+      return Math.hypot(width / 2, height / 2);
+    }
+
+    _areaBadgeHalfDiagonal(text) {
+      const font = "700 12px 'Avenir Next', 'Segoe UI', sans-serif";
+      const width = Math.max(42, this._measureTextWidth(text, font) + 14);
+      const height = 22;
+      return Math.hypot(width / 2, height / 2);
+    }
+
+    _isAreaBadgeNearEdgeBadges(areaPoint, areaText, edgeBadgeMetrics) {
+      if (!areaPoint || !Array.isArray(edgeBadgeMetrics) || !edgeBadgeMetrics.length) {
+        return false;
+      }
+
+      const areaHalfDiagonal = this._areaBadgeHalfDiagonal(areaText);
+      const buffer = 8;
+      return edgeBadgeMetrics.some((badge) => {
+        if (!badge) {
+          return false;
+        }
+        const dx = areaPoint.x - badge.x;
+        const dy = areaPoint.y - badge.y;
+        const distance = Math.hypot(dx, dy);
+        return distance <= areaHalfDiagonal + badge.halfDiagonal + buffer;
+      });
+    }
+
     _chooseOutsideNormal(polygonScreenPoints, a, b) {
       const dx = b.x - a.x;
       const dy = b.y - a.y;
@@ -374,6 +406,74 @@
         x: avg.x / points.length,
         y: avg.y / points.length
       };
+    }
+
+    _distanceToPolygonEdges(point, polygonPoints) {
+      if (!point || !Array.isArray(polygonPoints) || polygonPoints.length < 3) {
+        return 0;
+      }
+
+      let minDistance = Infinity;
+      for (let i = 0; i < polygonPoints.length; i += 1) {
+        const next = (i + 1) % polygonPoints.length;
+        const distance = HOP.geometry.distanceToSegment(point, polygonPoints[i], polygonPoints[next]);
+        if (distance < minDistance) {
+          minDistance = distance;
+        }
+      }
+
+      return Number.isFinite(minDistance) ? minDistance : 0;
+    }
+
+    _bestInteriorSamplePoint(polygonPoints) {
+      if (!Array.isArray(polygonPoints) || polygonPoints.length < 3) {
+        return null;
+      }
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      polygonPoints.forEach((point) => {
+        minX = Math.min(minX, point.x);
+        minY = Math.min(minY, point.y);
+        maxX = Math.max(maxX, point.x);
+        maxY = Math.max(maxY, point.y);
+      });
+
+      if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+        return null;
+      }
+
+      const width = maxX - minX;
+      const height = maxY - minY;
+      if (width <= 0 || height <= 0) {
+        return null;
+      }
+
+      const steps = 8;
+      let bestPoint = null;
+      let bestClearance = -Infinity;
+
+      for (let iy = 0; iy < steps; iy += 1) {
+        for (let ix = 0; ix < steps; ix += 1) {
+          const sample = {
+            x: minX + ((ix + 0.5) / steps) * width,
+            y: minY + ((iy + 0.5) / steps) * height
+          };
+          if (!HOP.geometry.pointInPolygon(sample, polygonPoints)) {
+            continue;
+          }
+
+          const clearance = this._distanceToPolygonEdges(sample, polygonPoints);
+          if (!bestPoint || clearance > bestClearance) {
+            bestPoint = sample;
+            bestClearance = clearance;
+          }
+        }
+      }
+
+      return bestPoint;
     }
 
     _stableInteriorPoint(shapeId, canonicalPoints) {
@@ -437,7 +537,11 @@
       }
 
       if (!chosen) {
-        chosen = centroid || avg;
+        chosen = this._bestInteriorSamplePoint(canonicalPoints) || centroid || avg;
+      }
+
+      if (chosen && !HOP.geometry.pointInPolygon(chosen, canonicalPoints)) {
+        chosen = this._bestInteriorSamplePoint(canonicalPoints);
       }
 
       if (shapeId && chosen) {
@@ -479,6 +583,9 @@
     }
 
     _createVertexHandle(point, shapeId, vertexIndex) {
+      const bubbleRadius = 5.2;
+      const bubbleStrokeWidth = 1.4;
+      const hitRadius = bubbleRadius + bubbleStrokeWidth / 2;
       const group = createSvgElement("g", {
         class: "hop-vertex-handle-group"
       });
@@ -487,7 +594,7 @@
         createSvgElement("circle", {
           cx: point.x,
           cy: point.y,
-          r: 10,
+          r: hitRadius,
           class: "hop-vertex-handle-hit",
           "data-vertex-handle": "true",
           "data-shape-id": shapeId,
@@ -499,7 +606,7 @@
         createSvgElement("circle", {
           cx: point.x,
           cy: point.y,
-          r: 5.2,
+          r: bubbleRadius,
           class: "hop-vertex-handle"
         })
       );
@@ -872,6 +979,7 @@
         const canonicalPoints = shape.points;
         const screenPoints = canonicalPoints.map((point) => HOP.projection.canonicalToScreen(point, view));
         const edgeCount = screenPoints.length;
+        const edgeBadgeMetrics = [];
         const hasOpenEdges = Array.from({ length: edgeCount }).some((_, index) =>
           this._isEdgeDeleted(shape, index)
         );
@@ -944,28 +1052,52 @@
 
           if (settings.showAllLengths && this._isEdgeVisible(shape, i)) {
             const length = this._edgeLengthMeters(aCanonical, bCanonical);
+            const lengthText = formatLengthMeters(length);
             const edgeInfo = this._chooseOutsideNormal(screenPoints, a, b);
             const angleDeg = (Math.atan2(edgeInfo.dy, edgeInfo.dx) * 180) / Math.PI;
+            const badgeX = (a.x + b.x) / 2 + edgeInfo.nx * 12;
+            const badgeY = (a.y + b.y) / 2 + edgeInfo.ny * 12;
 
             measurementGroup.appendChild(
               this._createMeasurementBadge(
-                (a.x + b.x) / 2 + edgeInfo.nx * 12,
-                (a.y + b.y) / 2 + edgeInfo.ny * 12,
-                formatLengthMeters(length),
+                badgeX,
+                badgeY,
+                lengthText,
                 angleDeg,
                 { shapeId: shape.id, edgeIndex: i }
               )
             );
+            edgeBadgeMetrics.push({
+              x: badgeX,
+              y: badgeY,
+              halfDiagonal: this._edgeBadgeHalfDiagonal(lengthText)
+            });
           }
         }
 
         if (settings.showAllAreas && this._areaVisible(shape) && !hasOpenEdges) {
-          const interiorCanonical = this._stableInteriorPoint(shape.id, canonicalPoints);
+          const interiorCanonical =
+            shape.type === "rectangle"
+              ? this._averagePoint(canonicalPoints)
+              : this._stableInteriorPoint(shape.id, canonicalPoints);
           if (interiorCanonical) {
             const interiorScreen = HOP.projection.canonicalToScreen(interiorCanonical, view);
             const area = HOP.geometry.polygonAreaSquareMeters(canonicalPoints);
+            const areaText = formatAreaSquareMeters(area);
+            let areaPosition = interiorScreen;
+            if (this._isAreaBadgeNearEdgeBadges(interiorScreen, areaText, edgeBadgeMetrics)) {
+              const centerScreen = this._averagePoint(screenPoints);
+              if (HOP.geometry.pointInPolygon(centerScreen, screenPoints)) {
+                areaPosition = centerScreen;
+              } else {
+                const sampledScreen = this._bestInteriorSamplePoint(screenPoints);
+                if (sampledScreen) {
+                  areaPosition = sampledScreen;
+                }
+              }
+            }
             measurementGroup.appendChild(
-              this._createAreaBadge(interiorScreen.x, interiorScreen.y, formatAreaSquareMeters(area))
+              this._createAreaBadge(areaPosition.x, areaPosition.y, areaText)
             );
           }
         }
@@ -1130,6 +1262,20 @@
         return group;
       }
 
+      if (draft.type === "lasso" && draft.start && draft.end) {
+        const rect = HOP.geometry.rectPointsFromDiagonal(draft.start, draft.end);
+        const screenRect = rect.map((point) => HOP.projection.canonicalToScreen(point, view));
+
+        group.appendChild(
+          createSvgElement("polygon", {
+            points: pointsToString(screenRect),
+            class: "hop-draft-lasso"
+          })
+        );
+
+        return group;
+      }
+
       if (draft.type === "polygon" && Array.isArray(draft.points) && draft.points.length) {
         const points = draft.points.slice();
         if (draft.pointer) {
@@ -1145,6 +1291,84 @@
               fill: "none"
             })
           );
+        }
+
+        if (draft.pointer && draft.points.length >= 2) {
+          const anchorCanonical = draft.points[draft.points.length - 1];
+          const prevCanonical = draft.points[draft.points.length - 2];
+          const pointerCanonical = draft.pointer;
+
+          const anchor = HOP.projection.canonicalToScreen(anchorCanonical, view);
+          const prev = HOP.projection.canonicalToScreen(prevCanonical, view);
+          const pointer = HOP.projection.canonicalToScreen(pointerCanonical, view);
+
+          const inVec = {
+            x: anchor.x - prev.x,
+            y: anchor.y - prev.y
+          };
+          const outVec = {
+            x: pointer.x - anchor.x,
+            y: pointer.y - anchor.y
+          };
+          const inLen = Math.hypot(inVec.x, inVec.y);
+          const outLen = Math.hypot(outVec.x, outVec.y);
+
+          if (inLen >= 10 && outLen >= 10) {
+            const inUnit = {
+              x: inVec.x / inLen,
+              y: inVec.y / inLen
+            };
+            const outUnit = {
+              x: outVec.x / outLen,
+              y: outVec.y / outLen
+            };
+
+            const dot = inUnit.x * outUnit.x + inUnit.y * outUnit.y;
+            const angle = (Math.acos(clamp(dot, -1, 1)) * 180) / Math.PI;
+            const rightAngleToleranceDeg = 0.5;
+
+            if (Math.abs(angle - 90) <= rightAngleToleranceDeg) {
+              const markerSize = clamp(Math.min(inLen, outLen) * 0.18, 8, 20);
+              const cornerA = {
+                x: anchor.x + inUnit.x * markerSize,
+                y: anchor.y + inUnit.y * markerSize
+              };
+              const cornerB = {
+                x: cornerA.x + outUnit.x * markerSize,
+                y: cornerA.y + outUnit.y * markerSize
+              };
+              const cornerC = {
+                x: anchor.x + outUnit.x * markerSize,
+                y: anchor.y + outUnit.y * markerSize
+              };
+
+              group.appendChild(
+                createSvgElement("path", {
+                  d: `M ${cornerA.x} ${cornerA.y} L ${cornerB.x} ${cornerB.y} L ${cornerC.x} ${cornerC.y}`,
+                  class: "hop-draft-right-angle"
+                })
+              );
+
+              const bisector = {
+                x: inUnit.x + outUnit.x,
+                y: inUnit.y + outUnit.y
+              };
+              const bisectorLen = Math.hypot(bisector.x, bisector.y) || 1;
+              const labelOffset = markerSize + 10;
+              const labelPos = {
+                x: anchor.x + (bisector.x / bisectorLen) * labelOffset,
+                y: anchor.y + (bisector.y / bisectorLen) * labelOffset
+              };
+              const label = createSvgElement("text", {
+                x: labelPos.x,
+                y: labelPos.y,
+                class: "hop-draft-right-angle-label",
+                "text-anchor": "middle"
+              });
+              label.textContent = "90°";
+              group.appendChild(label);
+            }
+          }
         }
 
         return group;

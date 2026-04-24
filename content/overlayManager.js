@@ -34,12 +34,19 @@
       this.navigatorBusyShapeId = null;
       this.navigatorUiStateStorageKey = "homesteadOverlayPlannerNavigatorUiStateV1";
       this.suspendNavigatorUiStatePersist = false;
+      this.autoSaveDelayMs = 900;
+      this.autoSaveTimerId = 0;
+      this.autoSavePending = false;
+      this.autoSaveInFlight = false;
+      this.autoSaveLastErrorMessage = "";
+      this.autoSaveLastErrorAt = 0;
       this.boundResize = this._onResize.bind(this);
     }
 
     _getDefaultKeyBindings() {
       return {
         select: "v",
+        lasso: "q",
         pan: "h",
         connection: "c",
         line: "l",
@@ -51,6 +58,7 @@
         length: "k",
         showUnshowLength: "j",
         showUnshowArea: "u",
+        rightAngleSnap: "a",
         save: "s",
         exit: "x"
       };
@@ -189,6 +197,7 @@
     }
 
     async _createNewPlan(planName) {
+      this._cancelAutoSave();
       const name = typeof planName === "string" && planName.trim() ? planName.trim() : "Untitled Plan";
 
       const viewport = this._getMapViewportRect();
@@ -250,6 +259,7 @@
         return { ok: false, error: "Missing plan id" };
       }
 
+      this._cancelAutoSave();
       const opts = options && typeof options === "object" ? options : {};
       await this.start({ keyBindings: opts.keyBindings });
 
@@ -319,72 +329,107 @@
       };
     }
 
-    async saveCurrentPlan(optionalName) {
-      if (!this.currentMapState) {
-        this.ui.showStatus(
-          "Cannot save plan: unsupported Google Maps URL state."
-        );
-        return { ok: false, error: "Unsupported view" };
+    async saveCurrentPlan(optionalName, optionsArg) {
+      const options = optionsArg && typeof optionsArg === "object" ? optionsArg : {};
+      const silent = options.silent === true;
+      const source = typeof options.source === "string" ? options.source : "manual";
+
+      if (source !== "autosave") {
+        this._cancelAutoSave();
       }
 
-      const existing = this.currentPlanId
-        ? await this.storage.getPlan(this.currentPlanId)
-        : null;
+      try {
+        if (!this.currentMapState) {
+          if (!silent) {
+            this.ui.showStatus(
+              "Cannot save plan: unsupported Google Maps URL state."
+            );
+          }
+          return { ok: false, error: "Unsupported view" };
+        }
 
-      let chosenName =
-        typeof optionalName === "string" && optionalName.trim()
-          ? optionalName.trim()
-          : (existing && existing.name) || this.currentPlanName;
+        const existing = this.currentPlanId
+          ? await this.storage.getPlan(this.currentPlanId)
+          : null;
 
-      if (!chosenName) {
-        chosenName = (window.prompt("Save plan as:", "Homestead Plan") || "").trim();
-      }
+        let chosenName =
+          typeof optionalName === "string" && optionalName.trim()
+            ? optionalName.trim()
+            : (existing && existing.name) || this.currentPlanName;
 
-      if (!chosenName) {
-        return { ok: false, cancelled: true };
-      }
+        if (!chosenName) {
+          if (silent) {
+            return { ok: false, cancelled: true, error: "Missing plan name" };
+          }
+          chosenName = (window.prompt("Save plan as:", "Homestead Plan") || "").trim();
+        }
 
-      const viewport = this._getMapViewportRect();
-      const currentMap = HOP.MapState.parseMapUrl(window.location.href, {
-        viewportHeight: viewport.height
-      });
+        if (!chosenName) {
+          return { ok: false, cancelled: true };
+        }
 
-      if (currentMap) {
-        this.currentMapState = currentMap;
-      }
+        const viewport = this._getMapViewportRect();
+        const currentMap = HOP.MapState.parseMapUrl(window.location.href, {
+          viewportHeight: viewport.height
+        });
 
-      const now = new Date().toISOString();
-      const plan = {
-        id: existing ? existing.id : (this.currentPlanId || HOP.ids.createId("plan")),
-        name: chosenName,
-        createdAt: existing ? existing.createdAt : now,
-        updatedAt: now,
-        source: {
-          url: this._buildPlanSourceUrl({
-            url: window.location.href,
+        if (currentMap) {
+          this.currentMapState = currentMap;
+        }
+
+        const now = new Date().toISOString();
+        const plan = {
+          id: existing ? existing.id : (this.currentPlanId || HOP.ids.createId("plan")),
+          name: chosenName,
+          createdAt: existing ? existing.createdAt : now,
+          updatedAt: now,
+          source: {
+            url: this._buildPlanSourceUrl({
+              url: window.location.href,
+              lat: this.currentMapState.lat,
+              lng: this.currentMapState.lng,
+              zoom: this.currentMapState.zoom
+            }),
             lat: this.currentMapState.lat,
             lng: this.currentMapState.lng,
-            zoom: this.currentMapState.zoom
-          }),
-          lat: this.currentMapState.lat,
-          lng: this.currentMapState.lng,
-          zoom: this.currentMapState.zoom,
-          viewportWidth: viewport.width,
-          viewportHeight: viewport.height
-        },
-        shapes: JSON.parse(JSON.stringify(this.shapes))
-      };
+            zoom: this.currentMapState.zoom,
+            viewportWidth: viewport.width,
+            viewportHeight: viewport.height
+          },
+          shapes: JSON.parse(JSON.stringify(this.shapes))
+        };
 
-      const saved = await this.storage.savePlan(plan);
-      this.currentPlanId = saved.id;
-      this.currentPlanName = saved.name;
-      this.ui.showStatus(`Saved plan "${saved.name}".`);
+        const saved = await this.storage.savePlan(plan);
+        this.currentPlanId = saved.id;
+        this.currentPlanName = saved.name;
+        if (!silent) {
+          this.ui.showStatus(`Saved plan "${saved.name}".`);
+        }
 
-      return {
-        ok: true,
-        plan: saved,
-        status: this.getStatus()
-      };
+        return {
+          ok: true,
+          plan: saved,
+          status: this.getStatus()
+        };
+      } catch (error) {
+        console.error("Homestead Overlay Planner save failed:", error);
+        const rawMessage =
+          error && typeof error.message === "string" && error.message.trim()
+            ? error.message.trim()
+            : "unknown error";
+        const message = /extension context invalidated/i.test(rawMessage)
+          ? "Extension context invalidated. Restart Planning Mode from the extension popup, then save again."
+          : rawMessage;
+        if (source === "autosave") {
+          this._reportAutoSaveFailure(message);
+        } else {
+          this.ui.showStatus(`Save failed: ${message}`);
+        }
+        return {
+          ok: false,
+          error: message
+        };
+      }
     }
 
     exit() {
@@ -402,6 +447,7 @@
       if (this.ui) {
         this.ui.destroy();
       }
+      this._cancelAutoSave();
 
       this.renderer = null;
       this.drawingTools = null;
@@ -430,9 +476,6 @@
 
     _onMapStateChanged(mapState) {
       this.currentMapState = mapState;
-      if (this.ui) {
-        this.ui.clearStatus();
-      }
       this._render();
     }
 
@@ -862,6 +905,77 @@
       return JSON.parse(JSON.stringify(Array.isArray(shapes) ? shapes : []));
     }
 
+    _canAutoSave() {
+      return !!(this.active && this.currentPlanId);
+    }
+
+    _cancelAutoSave() {
+      if (this.autoSaveTimerId) {
+        window.clearTimeout(this.autoSaveTimerId);
+        this.autoSaveTimerId = 0;
+      }
+      this.autoSavePending = false;
+    }
+
+    _reportAutoSaveFailure(message) {
+      const normalized =
+        typeof message === "string" && message.trim() ? message.trim() : "unknown error";
+      const now = Date.now();
+      const recentlyReported =
+        normalized === this.autoSaveLastErrorMessage &&
+        now - this.autoSaveLastErrorAt < 5000;
+      if (recentlyReported) {
+        return;
+      }
+
+      this.autoSaveLastErrorMessage = normalized;
+      this.autoSaveLastErrorAt = now;
+      if (this.ui) {
+        this.ui.showStatus(`Auto-save failed: ${normalized}`);
+      }
+    }
+
+    _scheduleAutoSave() {
+      if (!this._canAutoSave()) {
+        return;
+      }
+
+      this.autoSavePending = true;
+      if (this.autoSaveTimerId) {
+        window.clearTimeout(this.autoSaveTimerId);
+      }
+
+      this.autoSaveTimerId = window.setTimeout(() => {
+        this.autoSaveTimerId = 0;
+        void this._flushAutoSave();
+      }, this.autoSaveDelayMs);
+    }
+
+    async _flushAutoSave() {
+      if (!this.autoSavePending || !this._canAutoSave()) {
+        this.autoSavePending = false;
+        return;
+      }
+
+      if (this.autoSaveInFlight) {
+        return;
+      }
+
+      this.autoSavePending = false;
+      this.autoSaveInFlight = true;
+      try {
+        await this.saveCurrentPlan(undefined, {
+          silent: true,
+          source: "autosave"
+        });
+      } finally {
+        this.autoSaveInFlight = false;
+        if (this.autoSavePending) {
+          this._scheduleAutoSave();
+        }
+      }
+    }
+
     _recordHistory(snapshot, clearFuture) {
       const cloned = this._cloneShapes(snapshot);
       this.historyPast.push(cloned);
@@ -930,6 +1044,8 @@
       if (!opts.skipRender) {
         this._render();
       }
+
+      this._scheduleAutoSave();
     }
 
     _setEditShapeId(shapeId) {
@@ -1654,6 +1770,10 @@
         this._setTool(HOP.constants.TOOL.SELECT);
         return true;
       }
+      if (action === "lasso") {
+        this._setTool(HOP.constants.TOOL.LASSO);
+        return true;
+      }
       if (action === "pan") {
         this._setTool(HOP.constants.TOOL.PAN);
         return true;
@@ -1696,8 +1816,11 @@
         this._toggleAreaPickMode();
         return true;
       }
+      if (action === "rightAngleSnap") {
+        return true;
+      }
       if (action === "save") {
-        this.saveCurrentPlan();
+        void this.saveCurrentPlan();
         return true;
       }
       if (action === "exit") {
@@ -1731,6 +1854,7 @@
 
       this._refreshToolbarStates();
       this._render();
+      this._scheduleAutoSave();
       return true;
     }
 
@@ -1758,12 +1882,14 @@
 
       this._refreshToolbarStates();
       this._render();
+      this._scheduleAutoSave();
       return true;
     }
 
     _handleToolbarAction(action) {
       if (
         action === HOP.constants.TOOL.SELECT ||
+        action === HOP.constants.TOOL.LASSO ||
         action === HOP.constants.TOOL.PAN ||
         action === HOP.constants.TOOL.CONNECTION ||
         action === HOP.constants.TOOL.LINE ||
@@ -1821,7 +1947,7 @@
       }
 
       if (action === HOP.constants.TOOLBAR_ACTION.SAVE) {
-        this.saveCurrentPlan();
+        void this.saveCurrentPlan();
         return;
       }
 

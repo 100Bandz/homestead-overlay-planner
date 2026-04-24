@@ -25,6 +25,7 @@ const MAP_URL_RE = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)([zm])
 
 const BINDING_ACTIONS = [
   { id: "select", label: "Select" },
+  { id: "lasso", label: "Lasso" },
   { id: "pan", label: "Pan Mode" },
   { id: "connection", label: "Connection" },
   { id: "line", label: "Line" },
@@ -36,12 +37,14 @@ const BINDING_ACTIONS = [
   { id: "length", label: "Length Toggle" },
   { id: "showUnshowLength", label: "Show/Unshow Length" },
   { id: "showUnshowArea", label: "Show/Unshow Area" },
+  { id: "rightAngleSnap", label: "Right-Angle Snap (Hold)" },
   { id: "save", label: "Save" },
   { id: "exit", label: "Exit" }
 ];
 
 const DEFAULT_KEY_BINDINGS = Object.freeze({
   select: "v",
+  lasso: "q",
   pan: "h",
   connection: "c",
   line: "l",
@@ -53,6 +56,7 @@ const DEFAULT_KEY_BINDINGS = Object.freeze({
   length: "k",
   showUnshowLength: "j",
   showUnshowArea: "u",
+  rightAngleSnap: "a",
   save: "s",
   exit: "x"
 });

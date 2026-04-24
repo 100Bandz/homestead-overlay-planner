@@ -20,6 +20,10 @@
   cursor: default;
 }
 
+#hop-overlay-root.hop-tool-lasso #hop-overlay-svg {
+  cursor: crosshair;
+}
+
 #hop-overlay-root.hop-tool-connection #hop-overlay-svg {
   cursor: copy;
 }
@@ -87,6 +91,15 @@
   font-weight: 600;
   padding: 8px 10px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 220ms ease, transform 220ms ease;
+  pointer-events: none;
+}
+
+.hop-status.is-visible {
+  opacity: 1;
+  transform: translateY(0);
   pointer-events: auto;
 }
 
@@ -437,6 +450,35 @@
   stroke-dasharray: 6 5;
   fill: rgba(255, 255, 255, 0.12);
   vector-effect: non-scaling-stroke;
+}
+
+.hop-draft-lasso {
+  stroke: rgba(138, 222, 255, 0.98);
+  stroke-width: 1.8;
+  stroke-dasharray: 5 4;
+  fill: rgba(88, 186, 255, 0.16);
+  vector-effect: non-scaling-stroke;
+}
+
+.hop-draft-right-angle {
+  fill: rgba(122, 212, 255, 0.2);
+  stroke: rgba(122, 212, 255, 0.98);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.hop-draft-right-angle-label {
+  fill: rgba(196, 240, 255, 0.98);
+  stroke: rgba(10, 28, 38, 0.95);
+  stroke-width: 2.2;
+  paint-order: stroke fill;
+  font-size: 10px;
+  font-weight: 800;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  letter-spacing: 0.02em;
+  user-select: none;
+  pointer-events: none;
 }
 
 @media (max-width: 820px) {
