@@ -756,11 +756,18 @@
         Number.isFinite(referenceScaleRaw) && referenceScaleRaw > 0
           ? referenceScaleRaw
           : currentScale;
-      const zoomFactor = this._clamp(referenceScale / currentScale, 0.35, 1);
-      const width = Math.max(24, Math.min(360, (Number.isFinite(baseWidth) ? baseWidth : 96) * zoomFactor));
-      const height = Math.max(12, Math.min(120, (Number.isFinite(baseHeight) ? baseHeight : 24) * zoomFactor));
-      const boxX = anchor.x + (Number.isFinite(baseOffsetX) ? baseOffsetX : 10) * zoomFactor;
-      const boxY = anchor.y + (Number.isFinite(baseOffsetY) ? baseOffsetY : -28) * zoomFactor;
+      const offsetZoomFactor = this._clamp(referenceScale / currentScale, 0.35, 1);
+      const sizeZoomFactor = this._clamp(referenceScale / currentScale, 0.9, 1);
+      const width = Math.max(
+        64,
+        Math.min(360, (Number.isFinite(baseWidth) ? baseWidth : 96) * sizeZoomFactor)
+      );
+      const height = Math.max(
+        18,
+        Math.min(120, (Number.isFinite(baseHeight) ? baseHeight : 24) * sizeZoomFactor)
+      );
+      const boxX = anchor.x + (Number.isFinite(baseOffsetX) ? baseOffsetX : 10) * offsetZoomFactor;
+      const boxY = anchor.y + (Number.isFinite(baseOffsetY) ? baseOffsetY : -28) * offsetZoomFactor;
 
       return {
         left: boxX,
@@ -1353,7 +1360,7 @@
       return Number.isFinite(scale) && scale > 0 ? scale : 1;
     }
 
-    _labelZoomFactor(labelBox, currentScale) {
+    _labelOffsetZoomFactor(labelBox, currentScale) {
       const rawReferenceScale = labelBox ? Number(labelBox.referenceScale) : NaN;
       const referenceScale =
         Number.isFinite(rawReferenceScale) && rawReferenceScale > 0
@@ -1362,19 +1369,35 @@
       return Math.max(0.35, Math.min(1, referenceScale / currentScale));
     }
 
+    _labelSizeZoomFactor(labelBox, currentScale) {
+      const rawReferenceScale = labelBox ? Number(labelBox.referenceScale) : NaN;
+      const referenceScale =
+        Number.isFinite(rawReferenceScale) && rawReferenceScale > 0
+          ? rawReferenceScale
+          : currentScale;
+      return Math.max(0.9, Math.min(1, referenceScale / currentScale));
+    }
+
     _renderedLabelBox(labelBox, currentScale) {
       const source = labelBox && typeof labelBox === "object" ? labelBox : {};
       const baseOffsetX = Number(source.offsetX);
       const baseOffsetY = Number(source.offsetY);
       const baseWidth = Number(source.width);
       const baseHeight = Number(source.height);
-      const zoomFactor = this._labelZoomFactor(source, currentScale);
+      const offsetZoomFactor = this._labelOffsetZoomFactor(source, currentScale);
+      const sizeZoomFactor = this._labelSizeZoomFactor(source, currentScale);
 
       return {
-        offsetX: (Number.isFinite(baseOffsetX) ? baseOffsetX : 10) * zoomFactor,
-        offsetY: (Number.isFinite(baseOffsetY) ? baseOffsetY : -28) * zoomFactor,
-        width: Math.max(24, Math.min(360, (Number.isFinite(baseWidth) ? baseWidth : 96) * zoomFactor)),
-        height: Math.max(12, Math.min(120, (Number.isFinite(baseHeight) ? baseHeight : 24) * zoomFactor))
+        offsetX: (Number.isFinite(baseOffsetX) ? baseOffsetX : 10) * offsetZoomFactor,
+        offsetY: (Number.isFinite(baseOffsetY) ? baseOffsetY : -28) * offsetZoomFactor,
+        width: Math.max(
+          64,
+          Math.min(360, (Number.isFinite(baseWidth) ? baseWidth : 96) * sizeZoomFactor)
+        ),
+        height: Math.max(
+          18,
+          Math.min(120, (Number.isFinite(baseHeight) ? baseHeight : 24) * sizeZoomFactor)
+        )
       };
     }
 

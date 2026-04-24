@@ -1280,15 +1280,16 @@
           Number.isFinite(referenceScaleRaw) && referenceScaleRaw > 0
             ? referenceScaleRaw
             : currentScale;
-        // Keep labels readable while still scaling down on zoom-out to reduce drift/overlap.
-        const zoomFactor = clamp(referenceScale / currentScale, 0.35, 1);
-        const boxWidth = Math.max(24, Math.min(360, baseWidth * zoomFactor));
-        const boxHeight = Math.max(12, Math.min(120, baseHeight * zoomFactor));
-        const offsetX = (Number.isFinite(baseOffsetX) ? baseOffsetX : 10) * zoomFactor;
-        const offsetY = (Number.isFinite(baseOffsetY) ? baseOffsetY : -28) * zoomFactor;
+        // Keep labels readable on zoom-out: offsets can shrink more than box/text size.
+        const offsetZoomFactor = clamp(referenceScale / currentScale, 0.35, 1);
+        const sizeZoomFactor = clamp(referenceScale / currentScale, 0.9, 1);
+        const boxWidth = Math.max(64, Math.min(360, baseWidth * sizeZoomFactor));
+        const boxHeight = Math.max(18, Math.min(120, baseHeight * sizeZoomFactor));
+        const offsetX = (Number.isFinite(baseOffsetX) ? baseOffsetX : 10) * offsetZoomFactor;
+        const offsetY = (Number.isFinite(baseOffsetY) ? baseOffsetY : -28) * offsetZoomFactor;
         const boxX = anchor.x + offsetX;
         const boxY = anchor.y + offsetY;
-        const fontSize = Math.max(8, Math.min(12, 12 * zoomFactor));
+        const fontSize = Math.max(10, Math.min(12, 12 * sizeZoomFactor));
         const fontSpec = `700 ${fontSize}px 'Avenir Next', 'Segoe UI', sans-serif`;
 
         const fullText = shape.text || "Label";
@@ -1309,7 +1310,7 @@
           createSvgElement("circle", {
             cx: anchor.x,
             cy: anchor.y,
-            r: Math.max(2.5, 4 * zoomFactor),
+            r: Math.max(2.5, 4 * sizeZoomFactor),
             class: "hop-label-anchor"
           })
         );
@@ -1328,8 +1329,8 @@
           createSvgElement("rect", {
             x: boxX,
             y: boxY,
-            rx: Math.max(3, 7 * zoomFactor),
-            ry: Math.max(3, 7 * zoomFactor),
+            rx: Math.max(3, 7 * sizeZoomFactor),
+            ry: Math.max(3, 7 * sizeZoomFactor),
             width: boxWidth,
             height: boxHeight,
             class: "hop-label-box",
@@ -1356,7 +1357,7 @@
             createSvgElement("circle", {
               cx: boxX + boxWidth,
               cy: boxY + boxHeight,
-              r: Math.max(3.4, 5.2 * zoomFactor),
+              r: Math.max(3.4, 5.2 * sizeZoomFactor),
               class: "hop-label-resize-handle",
               "data-label-control": "resize"
             })
