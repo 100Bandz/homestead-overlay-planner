@@ -8,6 +8,7 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 - Draws and stores geometry in canonical Web Mercator global pixels at zoom 24.
 - Tracks map center/zoom from Google Maps URLs and reprojects shapes as URL state changes.
 - Saves plans in `chrome.storage.local` only (no backend).
+- Auto-saves plan edits while planning mode is active (debounced).
 - Supports JSON export and JSON import for plans.
 
 ## Load Unpacked In Chrome
@@ -35,6 +36,7 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 ## In-Map Toolbar
 
 - `Select`
+- `Lasso`
 - `Pan Mode`
 - `Connection`
 - `Line`
@@ -64,27 +66,38 @@ Copy/Paste shortcuts are also available while not typing:
 ## Shape Navigator
 
 - A collapsible **Shapes** panel appears in-map (top-left) while planning is active.
+- The panel is draggable, starts collapsed by default, and its collapsed/position state is restored.
 - Each saved shape/line/label appears with a **Find** button.
 - **Find** saves the current plan, navigates Google Maps to that shape's location, and reloads the plan with that shape selected.
 
 ## Editing and Interaction
 
+- `Lasso` mode:
+  - Click-drag to draw a lasso rectangle and select all intersecting shapes/labels.
+  - Shift+drag appends to the current selection.
+  - Dragging a selected shape in lasso mode moves the selected group together.
+  - Press `Delete`/`Backspace` to remove selected items.
 - `Select` mode:
   - Drag line/rectangle/polygon/label to move.
   - Drag selected shape/group to reposition.
   - Press `Delete`/`Backspace` to delete selected shape (and keep using **Delete Selected** button if preferred).
   - Double-click line/rectangle/polygon to toggle vertex edit handles.
   - Drag vertex handles to reshape line endpoints / polygon / rectangle geometry.
+  - Rectangle corner drag preserves rectangle geometry (uniformly resizes while keeping right angles).
+  - Vertex handles use precise hit targets with grab/grabbing cursor feedback.
   - Selected line/rectangle/polygon shows a rotate handle (`R`) that supports click-hold-drag fluid rotation.
   - Double-click length badge on a side to set exact side length (meters).
   - Double-click polygon/rectangle side to select that side for side-delete operations.
 - Labels:
   - Prompted for text after creation.
+  - After placing a label, tool switches back to `Select` automatically for quick repositioning.
   - Double-click label or press `Enter` while selected to edit text.
   - Drag label bubble to reposition text box.
   - Drag label resize handle to resize bubble width/height.
 - Polygon drawing:
   - Click to add vertices.
+  - Shows a strict `90°` indicator when the next segment is at a right angle.
+  - Hold the configurable right-angle snap key to force the next segment perpendicular to the previous edge.
   - Double-click to finish.
 
 ## Measurements
@@ -92,17 +105,27 @@ Copy/Paste shortcuts are also available while not typing:
 - Line: length badge.
 - Rectangle/Polygon: side lengths (outside shape) and area (inside shape).
 - Closed loops formed by connected line segments also show derived area.
+- Area badge placement avoids overlap with side-length badges and stays inside polygon interiors (including concave shapes).
 - Length and area visibility controls:
   - Global lengths on/off
   - Global areas on/off
   - Per-side length visibility via `Show/Unshow Length` mode
   - Per-shape area visibility via `Show/Unshow Area` mode
 
+## Saving and Reliability
+
+- Manual **Save** is still available and immediate.
+- Auto-save runs after edit operations while a plan is loaded (create, move, resize/reshape, rotate, copy/paste, delete, visibility toggles, side-length edits, undo/redo, connection changes).
+- Auto-save is debounced (~900ms) to avoid excessive writes.
+- Save and auto-save failures show status messages in-map; extension-context invalidation errors are reported with restart guidance.
+- Status toasts auto-dismiss with a smooth fade (default ~4 seconds unless overridden).
+
 ## Key Bindings
 
 - Popup includes a **Key Bindings** section with **Customize** panel.
 - You can remap:
   - `Select`
+  - `Lasso`
   - `Pan Mode`
   - `Connection`
   - `Line`
@@ -114,8 +137,12 @@ Copy/Paste shortcuts are also available while not typing:
   - `Length Toggle`
   - `Show/Unshow Length`
   - `Show/Unshow Area`
+  - `Right-Angle Snap (Hold)`
   - `Save`
   - `Exit`
+- Default new bindings:
+  - `Lasso` = `Q`
+  - `Right-Angle Snap (Hold)` = `A`
 
 ## Store Assets
 
