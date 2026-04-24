@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Homestead Overlay Planner",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Draw and save homestead planning overlays on top of Google Maps.",
   "icons": {
     "16": "store-assets/icon-16.png",
