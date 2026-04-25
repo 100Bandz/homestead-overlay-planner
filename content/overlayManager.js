@@ -29,10 +29,12 @@
         showAllLengths: true,
         showAllAreas: true,
         sideToggleMode: false,
-        areaToggleMode: false
+        areaToggleMode: false,
+        unitSystem: this._detectUnitSystem()
       };
       this.navigatorBusyShapeId = null;
       this.navigatorUiStateStorageKey = "homesteadOverlayPlannerNavigatorUiStateV1";
+      this.unitSystemStorageKey = "homesteadOverlayPlannerUnitSystemV1";
       this.suspendNavigatorUiStatePersist = false;
       this.autoSaveDelayMs = 900;
       this.autoSaveTimerId = 0;
@@ -63,6 +65,70 @@
         save: "s",
         exit: "x"
       };
+    }
+
+    _detectUnitSystem() {
+      const parseRegion = (value) => {
+        const raw = typeof value === "string" ? value.trim() : "";
+        if (!raw) {
+          return "";
+        }
+        const parts = raw.replace(/_/g, "-").split("-");
+        if (parts.length < 2) {
+          return "";
+        }
+        return String(parts[1]).toUpperCase();
+      };
+
+      const primaryLocale =
+        typeof navigator !== "undefined" &&
+        navigator &&
+        typeof navigator.language === "string"
+          ? navigator.language
+          : "";
+      const primaryRegion = parseRegion(primaryLocale);
+      if (primaryRegion === "US") {
+        return "imperial";
+      }
+      if (primaryRegion) {
+        return "metric";
+      }
+
+      return "metric";
+    }
+
+    _sanitizeUnitSystem(raw) {
+      if (raw === "imperial" || raw === "metric") {
+        return raw;
+      }
+      return null;
+    }
+
+    async _persistUnitSystemPreference(unitSystem) {
+      const safe = this._sanitizeUnitSystem(unitSystem);
+      if (!safe) {
+        return;
+      }
+
+      try {
+        await chrome.storage.local.set({
+          [this.unitSystemStorageKey]: safe
+        });
+      } catch (_error) {
+        // Ignore unit preference storage failures.
+      }
+    }
+
+    async _restoreUnitSystemPreference() {
+      try {
+        const payload = await chrome.storage.local.get(this.unitSystemStorageKey);
+        const saved = this._sanitizeUnitSystem(payload[this.unitSystemStorageKey]);
+        if (saved) {
+          this.measurementSettings.unitSystem = saved;
+        }
+      } catch (_error) {
+        // Ignore unit preference restore failures.
+      }
     }
 
     _normalizeShortcut(shortcut) {
@@ -118,6 +184,7 @@
         this._handleNavigatorAction.bind(this),
         this._handleNavigatorUiStateChanged.bind(this)
       );
+      await this._restoreUnitSystemPreference();
       await this._restoreNavigatorUiState();
       this.suspendNavigatorUiStatePersist = false;
       this.renderer = new HOP.ShapeRenderer(this.ui.getSvg());
@@ -1150,6 +1217,13 @@
         this.measurementSettings.showAllAreas ? "Areas: On" : "Areas: Off"
       );
 
+      const isImperial = this.measurementSettings.unitSystem === "imperial";
+      this.ui.setButtonState(
+        HOP.constants.TOOLBAR_ACTION.TOGGLE_UNITS,
+        isImperial,
+        isImperial ? "Units: Imperial" : "Units: Metric"
+      );
+
       this.ui.setButtonState(
         HOP.constants.TOOLBAR_ACTION.TOGGLE_LENGTH_PICK,
         this.measurementSettings.sideToggleMode,
@@ -1221,6 +1295,19 @@
       this.measurementSettings.showAllAreas = !this.measurementSettings.showAllAreas;
       this._refreshToolbarStates();
       this._render();
+    }
+
+    _toggleUnitSystem() {
+      this.measurementSettings.unitSystem =
+        this.measurementSettings.unitSystem === "imperial" ? "metric" : "imperial";
+      this._refreshToolbarStates();
+      this._render();
+      void this._persistUnitSystemPreference(this.measurementSettings.unitSystem);
+      this.ui.showStatus(
+        this.measurementSettings.unitSystem === "imperial"
+          ? "Units set to Imperial."
+          : "Units set to Metric."
+      );
     }
 
     _toggleLengthPickMode() {
@@ -1556,6 +1643,34 @@
       return HOP.projection.latLngDistanceMeters(a, b);
     }
 
+    _lengthUnitWord() {
+      return this.measurementSettings.unitSystem === "imperial" ? "feet" : "meters";
+    }
+
+    _lengthUnitSuffix() {
+      return this.measurementSettings.unitSystem === "imperial" ? "ft" : "m";
+    }
+
+    _displayLengthFromMeters(meters) {
+      const value = Number(meters);
+      if (!Number.isFinite(value)) {
+        return 0;
+      }
+      return this.measurementSettings.unitSystem === "imperial"
+        ? value * 3.280839895013123
+        : value;
+    }
+
+    _metersFromDisplayLength(displayLength) {
+      const value = Number(displayLength);
+      if (!Number.isFinite(value)) {
+        return NaN;
+      }
+      return this.measurementSettings.unitSystem === "imperial"
+        ? value / 3.280839895013123
+        : value;
+    }
+
     _normalizePoint(point) {
       const worldSize = HOP.constants.TILE_SIZE * Math.pow(2, HOP.constants.CANONICAL_ZOOM);
       return {
@@ -1728,23 +1843,27 @@
         return false;
       }
 
-      const current = this._edgeLengthMeters(shape, edgeIndex);
+      const currentMeters = this._edgeLengthMeters(shape, edgeIndex);
+      const currentDisplay = this._displayLengthFromMeters(currentMeters);
       const promptText =
         shape && shape.type === "circle"
-          ? "Set diameter (meters):"
-          : "Set side length (meters):";
-      const raw = window.prompt(promptText, Number(current).toFixed(1));
+          ? `Set diameter (${this._lengthUnitWord()}):`
+          : `Set side length (${this._lengthUnitWord()}):`;
+      const raw = window.prompt(promptText, Number(currentDisplay).toFixed(1));
       if (raw === null) {
         return false;
       }
 
-      const target = Number(String(raw).replace(/[^0-9.+-]/g, ""));
-      if (!Number.isFinite(target) || target <= 0) {
-        this.ui.showStatus("Invalid length. Enter a value in meters, for example 12.5");
+      const targetDisplay = Number(String(raw).replace(/[^0-9.+-]/g, ""));
+      const targetMeters = this._metersFromDisplayLength(targetDisplay);
+      if (!Number.isFinite(targetMeters) || targetMeters <= 0) {
+        this.ui.showStatus(
+          `Invalid length. Enter a value in ${this._lengthUnitWord()}, for example 12.5`
+        );
         return false;
       }
 
-      return this._setShapeEdgeLength(shapeId, edgeIndex, target);
+      return this._setShapeEdgeLength(shapeId, edgeIndex, targetMeters);
     }
 
     _setShapeEdgeLength(shapeId, edgeIndex, targetMeters) {
@@ -1840,10 +1959,12 @@
       });
       this.selection.select(shapeId);
       this._setSelectedEdge(shapeId, edgeIndex);
+      const targetDisplay = this._displayLengthFromMeters(targetMeters);
+      const unitSuffix = this._lengthUnitSuffix();
       if (currentShape.type === "circle") {
-        this.ui.showStatus(`Diameter set to ${targetMeters.toFixed(1)} m.`);
+        this.ui.showStatus(`Diameter set to ${targetDisplay.toFixed(1)} ${unitSuffix}.`);
       } else {
-        this.ui.showStatus(`Side length set to ${targetMeters.toFixed(1)} m.`);
+        this.ui.showStatus(`Side length set to ${targetDisplay.toFixed(1)} ${unitSuffix}.`);
       }
       return true;
     }
@@ -2077,6 +2198,11 @@
 
       if (action === HOP.constants.TOOLBAR_ACTION.TOGGLE_AREAS) {
         this._toggleAllAreas();
+        return;
+      }
+
+      if (action === HOP.constants.TOOLBAR_ACTION.TOGGLE_UNITS) {
+        this._toggleUnitSystem();
         return;
       }
 

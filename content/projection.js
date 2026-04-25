@@ -93,7 +93,7 @@
   }
 
   function latLngDistanceMeters(a, b) {
-    const R = 6371000;
+    const R = constants.EARTH_RADIUS_METERS || 6371000;
     const dLat = ((b.lat - a.lat) * Math.PI) / 180;
     const dLng = ((b.lng - a.lng) * Math.PI) / 180;
 

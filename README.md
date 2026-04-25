@@ -46,6 +46,7 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 - `Label`
 - `Lengths: On/Off`
 - `Areas: On/Off`
+- `Units: Metric/Imperial`
 - `Show/Unshow Length`
 - `Show/Unshow Area`
 - `Copy`
@@ -108,6 +109,10 @@ Copy/Paste shortcuts are also available while not typing:
 - Rectangle/Polygon: side lengths (outside shape) and area (inside shape).
 - Closed loops formed by connected line segments also show derived area.
 - Area badge placement avoids overlap with side-length badges and stays inside polygon interiors (including concave shapes).
+- Unit system is automatic by browser locale region:
+  - primary `US` locale uses imperial (`ft`, `mi`, `ft²`, `ac`, `mi²`)
+  - all other locales use metric (`m`, `km`, `m²`, `ha`, `km²`)
+- You can override this anytime in-map with the `Units` toolbar toggle; your choice is saved.
 - Length and area visibility controls:
   - Global lengths on/off
   - Global areas on/off

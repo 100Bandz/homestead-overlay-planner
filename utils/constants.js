@@ -6,6 +6,7 @@
     CANONICAL_ZOOM: 24,
     TILE_SIZE: 256,
     MAX_MERCATOR_LAT: 85.05112878,
+    EARTH_RADIUS_METERS: 6371000,
     TOOL: Object.freeze({
       SELECT: "select",
       LASSO: "lasso",
@@ -27,6 +28,7 @@
       CIRCLE: "circle",
       POLYGON: "polygon",
       LABEL: "label",
+      TOGGLE_UNITS: "toggleUnits",
       TOGGLE_LENGTHS: "toggleLengths",
       TOGGLE_AREAS: "toggleAreas",
       TOGGLE_LENGTH_PICK: "toggleLengthPick",

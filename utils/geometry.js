@@ -107,7 +107,8 @@
       return 0;
     }
 
-    const earthRadiusMeters = 6378137;
+    const earthRadiusMeters =
+      (HOP.constants && HOP.constants.EARTH_RADIUS_METERS) || 6371000;
     const latLng = points.map((point) => HOP.projection.canonicalToLatLng(point));
     const lat0Deg = latLng.reduce((sum, value) => sum + value.lat, 0) / latLng.length;
     const lat0Rad = (lat0Deg * Math.PI) / 180;

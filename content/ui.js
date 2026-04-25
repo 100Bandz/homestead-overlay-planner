@@ -59,6 +59,7 @@
         { action: HOP.constants.TOOLBAR_ACTION.POLYGON, label: "Polygon" },
         { action: HOP.constants.TOOLBAR_ACTION.LABEL, label: "Label" },
         { action: HOP.constants.TOOLBAR_ACTION.DELETE_SELECTED, label: "Delete Selected" },
+        { action: HOP.constants.TOOLBAR_ACTION.TOGGLE_UNITS, label: "Units: Metric" },
         { action: HOP.constants.TOOLBAR_ACTION.TOGGLE_LENGTHS, label: "Lengths: On" },
         { action: HOP.constants.TOOLBAR_ACTION.TOGGLE_LENGTH_PICK, label: "Show/Unshow Length" },
         { action: HOP.constants.TOOLBAR_ACTION.TOGGLE_AREAS, label: "Areas: On" },

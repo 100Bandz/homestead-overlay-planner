@@ -19,9 +19,17 @@
     return points.map((p) => `${p.x},${p.y}`).join(" ");
   }
 
-  function formatLengthMeters(meters) {
+  function formatLength(meters, unitSystem) {
     if (!Number.isFinite(meters)) {
       return "--";
+    }
+
+    if (unitSystem === "imperial") {
+      const feet = meters * 3.280839895013123;
+      if (feet >= 5280) {
+        return `${(feet / 5280).toFixed(2)} mi`;
+      }
+      return `${feet.toFixed(1)} ft`;
     }
 
     if (meters >= 1000) {
@@ -31,9 +39,20 @@
     return `${meters.toFixed(1)} m`;
   }
 
-  function formatAreaSquareMeters(squareMeters) {
+  function formatArea(squareMeters, unitSystem) {
     if (!Number.isFinite(squareMeters)) {
       return "--";
+    }
+
+    if (unitSystem === "imperial") {
+      const squareFeet = squareMeters * 10.763910416709722;
+      if (squareFeet >= 27878400) {
+        return `${(squareFeet / 27878400).toFixed(3)} mi²`;
+      }
+      if (squareFeet >= 43560) {
+        return `${(squareFeet / 43560).toFixed(2)} ac`;
+      }
+      return `${squareFeet.toFixed(1)} ft²`;
     }
 
     if (squareMeters >= 1000000) {
@@ -114,6 +133,10 @@
         showAllLengths: !measurementSettings || measurementSettings.showAllLengths !== false,
         showAllAreas: !measurementSettings || measurementSettings.showAllAreas !== false,
         sideToggleMode: !!(measurementSettings && measurementSettings.sideToggleMode),
+        unitSystem:
+          measurementSettings && measurementSettings.unitSystem === "imperial"
+            ? "imperial"
+            : "metric",
         selectedEdge:
           selectedEdge && selectedEdge.shapeId && Number.isInteger(selectedEdge.edgeIndex)
             ? selectedEdge
@@ -913,7 +936,11 @@
 
         const interiorScreen = HOP.projection.canonicalToScreen(interior, view);
         loopGroup.appendChild(
-          this._createAreaBadge(interiorScreen.x, interiorScreen.y, formatAreaSquareMeters(area))
+          this._createAreaBadge(
+            interiorScreen.x,
+            interiorScreen.y,
+            formatArea(area, settings.unitSystem)
+          )
         );
         loopCount += 1;
       }
@@ -992,12 +1019,12 @@
 
           measurementGroup.appendChild(
             this._createMeasurementBadge(
-              (a.x + b.x) / 2 + nx * 12,
-              (a.y + b.y) / 2 + ny * 12,
-              formatLengthMeters(length),
-              angleDeg,
-              { shapeId: shape.id, edgeIndex: 0 }
-            )
+                (a.x + b.x) / 2 + nx * 12,
+                (a.y + b.y) / 2 + ny * 12,
+                formatLength(length, settings.unitSystem),
+                angleDeg,
+                { shapeId: shape.id, edgeIndex: 0 }
+              )
           );
         }
 
@@ -1075,7 +1102,7 @@
         const edgeBadgeMetrics = [];
         if (settings.showAllLengths && this._isEdgeVisible(shape, 0)) {
           const diameter = this._circleDiameterMeters(centerCanonical, radiusCanonical);
-          const lengthText = formatLengthMeters(diameter);
+          const lengthText = formatLength(diameter, settings.unitSystem);
           const badgeX = center.x;
           const badgeY = center.y - radiusPx - 14;
           measurementGroup.appendChild(
@@ -1096,7 +1123,7 @@
 
         if (settings.showAllAreas && this._areaVisible(shape)) {
           const area = this._circleAreaSquareMeters(centerCanonical, radiusCanonical);
-          const areaText = formatAreaSquareMeters(area);
+          const areaText = formatArea(area, settings.unitSystem);
           let areaX = center.x;
           let areaY = center.y;
           if (this._isAreaBadgeNearEdgeBadges({ x: areaX, y: areaY }, areaText, edgeBadgeMetrics)) {
@@ -1199,7 +1226,7 @@
 
           if (settings.showAllLengths && this._isEdgeVisible(shape, i)) {
             const length = this._edgeLengthMeters(aCanonical, bCanonical);
-            const lengthText = formatLengthMeters(length);
+            const lengthText = formatLength(length, settings.unitSystem);
             const edgeInfo = this._chooseOutsideNormal(screenPoints, a, b);
             const angleDeg = (Math.atan2(edgeInfo.dy, edgeInfo.dx) * 180) / Math.PI;
             const badgeX = (a.x + b.x) / 2 + edgeInfo.nx * 12;
@@ -1230,7 +1257,7 @@
           if (interiorCanonical) {
             const interiorScreen = HOP.projection.canonicalToScreen(interiorCanonical, view);
             const area = HOP.geometry.polygonAreaSquareMeters(canonicalPoints);
-            const areaText = formatAreaSquareMeters(area);
+            const areaText = formatArea(area, settings.unitSystem);
             let areaPosition = interiorScreen;
             if (this._isAreaBadgeNearEdgeBadges(interiorScreen, areaText, edgeBadgeMetrics)) {
               const centerScreen = this._averagePoint(screenPoints);
