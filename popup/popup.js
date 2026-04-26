@@ -22,6 +22,7 @@ const INJECTION_FILES = [
 ];
 
 const MAP_URL_RE = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)([zm])/i;
+const DEFAULT_START_MAP_URL = "https://www.google.com/maps/@0,0,2z";
 
 const BINDING_ACTIONS = [
   { id: "select", label: "Select" },
@@ -573,16 +574,16 @@ function isGoogleMapsPage(url) {
 function updatePageStatus() {
   const url = activeTab && activeTab.url ? activeTab.url : "";
   const onMapsPage = isGoogleMapsPage(url);
+  ui.startButton.disabled = false;
 
   if (!onMapsPage) {
     activeMapState = null;
-    ui.pageStatus.textContent = "Open a Google Maps tab to start planning.";
-    ui.startButton.disabled = true;
+    ui.pageStatus.textContent =
+      "Start Planning will open Google Maps in a new tab automatically.";
     return;
   }
 
   activeMapState = parseMapStateFromUrl(url, activeTab && activeTab.height);
-  ui.startButton.disabled = false;
 
   if (!activeMapState) {
     ui.pageStatus.textContent =
@@ -595,12 +596,37 @@ function updatePageStatus() {
   ui.pageStatus.textContent = `Map view detected at ${activeMapState.lat.toFixed(5)}, ${activeMapState.lng.toFixed(5)} (z${activeMapState.zoom.toFixed(2)}${approxSuffix}).`;
 }
 
-async function onStartPlanning() {
-  if (!activeTab || !activeTab.id || !isGoogleMapsPage(activeTab.url || "")) {
-    setFlash("Open Google Maps in the active tab first.");
-    return;
+async function resolveStartPlanningTab() {
+  const currentTab = activeTab;
+  if (
+    currentTab &&
+    Number.isInteger(currentTab.id) &&
+    currentTab.id > 0 &&
+    isGoogleMapsPage(currentTab.url || "")
+  ) {
+    return { tab: currentTab, openedNewTab: false };
   }
 
+  const createdTab = await chrome.tabs.create({
+    url: DEFAULT_START_MAP_URL,
+    active: false
+  });
+
+  if (!createdTab || !Number.isInteger(createdTab.id) || createdTab.id <= 0) {
+    throw new Error("Failed to open a Google Maps tab.");
+  }
+
+  const loadedTab = await waitForTabNavigation(createdTab.id, 20000);
+  if (!loadedTab || !Number.isInteger(loadedTab.id) || loadedTab.id <= 0) {
+    throw new Error("Google Maps tab did not finish loading.");
+  }
+
+  activeTab = loadedTab;
+  activeMapState = parseMapStateFromUrl(loadedTab.url || "", loadedTab.height);
+  return { tab: loadedTab, openedNewTab: true };
+}
+
+async function onStartPlanning() {
   const proposedName = window.prompt("New plan name:", "New Homestead Plan");
   const newPlanName = typeof proposedName === "string" ? proposedName.trim() : "";
   if (!newPlanName) {
@@ -608,9 +634,13 @@ async function onStartPlanning() {
     return;
   }
 
+  let startButtonWasDisabled = ui.startButton.disabled;
+  ui.startButton.disabled = true;
+
   try {
-    await ensurePlannerInjected(activeTab.id);
-    const response = await sendMessageToTab(activeTab.id, {
+    const { tab, openedNewTab } = await resolveStartPlanningTab();
+    await ensurePlannerInjected(tab.id);
+    const response = await sendMessageToTab(tab.id, {
       type: MESSAGE_TYPE.START,
       options: {
         newPlanName,
@@ -620,12 +650,17 @@ async function onStartPlanning() {
 
     if (response && response.ok) {
       setFlash(`Created and opened new plan "${newPlanName}".`);
+      if (openedNewTab) {
+        await chrome.tabs.update(tab.id, { active: true });
+      }
       await refreshPlansList();
     } else {
       setFlash("Could not start planning mode.");
     }
   } catch (error) {
     setFlash(`Failed to start planner: ${error.message || "unknown error"}`);
+  } finally {
+    ui.startButton.disabled = startButtonWasDisabled;
   }
 }
 
