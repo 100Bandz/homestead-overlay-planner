@@ -21,9 +21,9 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 
 ## Popup Workflow
 
-1. Open Google Maps and navigate to your property.
-2. Click the extension icon.
-3. Click **Start Planning**.
+1. Click the extension icon.
+2. Click **Start Planning**.
+3. If the active tab is not Google Maps, the extension opens a new Google Maps tab automatically and starts planning there.
 4. Enter a plan name when prompted. A new plan is created immediately and saved (even if empty).
 5. Use **Load** on any saved plan to jump to the saved map view and load shapes in one flow.
 6. In **Saved Plans**, you can:
@@ -93,7 +93,7 @@ Copy/Paste shortcuts are also available while not typing:
 - Labels:
   - Prompted for text after creation.
   - After placing a label, tool switches back to `Select` automatically for quick repositioning.
-  - Double-click label or press `Enter` while selected to edit text.
+  - In `Select` mode, double-click a label to rename it.
   - Drag label bubble to reposition text box.
   - Drag label resize handle to resize bubble width/height.
 - Polygon drawing:
@@ -109,6 +109,7 @@ Copy/Paste shortcuts are also available while not typing:
 - Rectangle/Polygon: side lengths (outside shape) and area (inside shape).
 - Closed loops formed by connected line segments also show derived area.
 - Area badge placement avoids overlap with side-length badges and stays inside polygon interiors (including concave shapes).
+- Length and area calculations use a shared Earth-radius constant for consistent side-length/area agreement.
 - Unit system is automatic by browser locale region:
   - primary `US` locale uses imperial (`ft`, `mi`, `ft²`, `ac`, `mi²`)
   - all other locales use metric (`m`, `km`, `m²`, `ha`, `km²`)
