@@ -69,6 +69,7 @@
       this.connectionDraft = null;
       this.polygonRightAngleSnapActive = false;
       this.lastEdgeMeasurementTap = null;
+      this.lastLabelTap = null;
       this.boundPointerDown = this._onPointerDown.bind(this);
       this.boundPointerMove = this._onPointerMove.bind(this);
       this.boundPointerUp = this._onPointerUp.bind(this);
@@ -117,6 +118,7 @@
       this.draggingRotate = null;
       this.connectionDraft = null;
       this.lastEdgeMeasurementTap = null;
+      this.lastLabelTap = null;
       if (this.svg) {
         this.svg.style.cursor = "";
       }
@@ -549,18 +551,6 @@
         return;
       }
 
-      if (this.getTool() === HOP.constants.TOOL.SELECT && event.key === "Enter") {
-        const selectedId = this.selection.getSelectedId();
-        if (!selectedId) {
-          return;
-        }
-
-        const selected = this._findShapeById(selectedId);
-        if (selected && selected.type === "label") {
-          event.preventDefault();
-          this._editLabelText(selectedId, "Edit label text:");
-        }
-      }
     }
 
     _onKeyUp(event) {
@@ -1716,6 +1706,28 @@
       return false;
     }
 
+    _consumeLabelDoubleTap(shapeId) {
+      const now = Date.now();
+      const thresholdMs = 700;
+      const previous = this.lastLabelTap;
+      const isDoubleTap =
+        previous &&
+        previous.shapeId === shapeId &&
+        now - previous.time <= thresholdMs;
+
+      this.lastLabelTap = {
+        shapeId,
+        time: now
+      };
+
+      if (isDoubleTap) {
+        this.lastLabelTap = null;
+        return true;
+      }
+
+      return false;
+    }
+
     _appendPolygonPoint(point) {
       if (!this.draft || this.draft.type !== "polygon") {
         this.draft = {
@@ -1973,6 +1985,20 @@
         if (labelControl) {
           const shape = this._findShapeById(labelControl.shapeId);
           if (shape && shape.type === "label") {
+            if (
+              labelControl.control === "bubble" &&
+              this._consumeLabelDoubleTap(labelControl.shapeId)
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+              this.selection.select(labelControl.shapeId);
+              this.clearSelectedEdge();
+              this.setEditShapeId(null);
+              this._editLabelText(shape.id, "Edit label text:");
+              this.requestRender();
+              return;
+            }
+
             event.preventDefault();
             const viewScale = this._currentViewScale();
             this.selection.select(labelControl.shapeId);
@@ -1992,7 +2018,6 @@
             return;
           }
         }
-
         const shapeId = this._findShapeIdFromEventTarget(event.target);
         if (!shapeId) {
           this.selection.clear();
@@ -2039,6 +2064,17 @@
           this.selection && typeof this.selection.has === "function"
             ? this.selection.has(shapeId)
             : this.selection.getSelectedId() === shapeId;
+
+        if (shape.type === "label" && this._consumeLabelDoubleTap(shapeId)) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.selection.select(shapeId);
+          this.clearSelectedEdge();
+          this.setEditShapeId(null);
+          this._editLabelText(shape.id, "Edit label text:");
+          this.requestRender();
+          return;
+        }
 
         if (!isAlreadySelected) {
           this.selection.select(shapeId);
