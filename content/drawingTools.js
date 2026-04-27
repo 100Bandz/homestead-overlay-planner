@@ -70,6 +70,7 @@
       this.polygonRightAngleSnapActive = false;
       this.lastEdgeMeasurementTap = null;
       this.lastLabelTap = null;
+      this.lastPolygonTap = null;
       this.boundPointerDown = this._onPointerDown.bind(this);
       this.boundPointerMove = this._onPointerMove.bind(this);
       this.boundPointerUp = this._onPointerUp.bind(this);
@@ -119,6 +120,7 @@
       this.connectionDraft = null;
       this.lastEdgeMeasurementTap = null;
       this.lastLabelTap = null;
+      this.lastPolygonTap = null;
       if (this.svg) {
         this.svg.style.cursor = "";
       }
@@ -1728,6 +1730,35 @@
       return false;
     }
 
+    _consumePolygonDoubleTap(screenPoint) {
+      if (!screenPoint || !Number.isFinite(screenPoint.x) || !Number.isFinite(screenPoint.y)) {
+        return false;
+      }
+
+      const now = Date.now();
+      const thresholdMs = 650;
+      const thresholdPx = 28;
+      const previous = this.lastPolygonTap;
+
+      let isDoubleTap = false;
+      if (previous && now - previous.time <= thresholdMs) {
+        const distance = HOP.geometry.distance(previous.screenPoint, screenPoint);
+        isDoubleTap = distance <= thresholdPx;
+      }
+
+      this.lastPolygonTap = {
+        time: now,
+        screenPoint: { x: screenPoint.x, y: screenPoint.y }
+      };
+
+      if (isDoubleTap) {
+        this.lastPolygonTap = null;
+        return true;
+      }
+
+      return false;
+    }
+
     _appendPolygonPoint(point) {
       if (!this.draft || this.draft.type !== "polygon") {
         this.draft = {
@@ -1800,6 +1831,7 @@
       });
 
       this.draft = null;
+      this.lastPolygonTap = null;
       this.requestRender();
       return true;
     }
@@ -2151,6 +2183,28 @@
       }
 
       if (!point) {
+        return;
+      }
+
+      if (tool === HOP.constants.TOOL.POLYGON) {
+        // Polygon corner placement is handled on pointerdown for reliability.
+        // This avoids dropped corners when browsers suppress/cancel click events
+        // after slight pointer movement.
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (
+          this.draft &&
+          this.draft.type === "polygon" &&
+          Array.isArray(this.draft.points) &&
+          this.draft.points.length >= 2 &&
+          this._consumePolygonDoubleTap(screenPoint)
+        ) {
+          this._finishPolygonAtPoint(point);
+          return;
+        }
+
+        this._appendPolygonPoint(point);
         return;
       }
 
@@ -2682,19 +2736,9 @@
 
       event.preventDefault();
       event.stopPropagation();
-
-      if (
-        event.detail >= 2 &&
-        this.draft &&
-        this.draft.type === "polygon" &&
-        Array.isArray(this.draft.points) &&
-        this.draft.points.length >= 2
-      ) {
-        this._finishPolygonAtPoint(point);
-        return;
-      }
-
-      this._appendPolygonPoint(point);
+      // Polygon corners are appended on pointerdown for reliability.
+      // Keep click consumed so Maps interactions don't interfere.
+      return;
     }
 
     _onDoubleClick(event) {
