@@ -32,6 +32,7 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
    - Click **Delete**
    - Double-click the plan name to rename it inline
 7. Use **Import JSON** to restore a plan from an exported `.json` file.
+8. Click **Help & Instructions** to open the in-extension guide in a new tab.
 
 ## In-Map Toolbar
 
@@ -83,12 +84,12 @@ Copy/Paste shortcuts are also available while not typing:
   - Drag line/rectangle/circle/polygon/label to move.
   - Drag selected shape/group to reposition.
   - Press `Delete`/`Backspace` to delete selected shape (and keep using **Delete Selected** button if preferred).
-  - Double-click line/rectangle/circle/polygon to toggle vertex edit handles.
+  - In `Select` mode, click line/rectangle/circle/polygon to show draggable control points.
   - Drag vertex handles to reshape line endpoints / polygon / rectangle geometry, and adjust circle radius.
   - Rectangle corner drag preserves rectangle geometry (uniformly resizes while keeping right angles).
   - Vertex handles use precise hit targets with grab/grabbing cursor feedback.
   - Selected line/rectangle/polygon shows a rotate handle (`R`) that supports click-hold-drag fluid rotation.
-  - Double-click length badge on a side to set exact side length (meters).
+  - Double-click a length badge to set an exact side length (or circle diameter) in the active unit system.
   - Double-click polygon/rectangle side to select that side for side-delete operations.
 - Labels:
   - Prompted for text after creation.
@@ -101,6 +102,13 @@ Copy/Paste shortcuts are also available while not typing:
   - Shows a strict `90°` indicator when the next segment is at a right angle.
   - Hold the configurable right-angle snap key to force the next segment perpendicular to the previous edge.
   - Double-click to finish.
+- How to draw with Polygon tool:
+  - Choose `Polygon` from the toolbar (or press `G`).
+  - Click to place the first corner.
+  - Move and click again to place each additional corner.
+  - Double-click to finish and close the polygon.
+  - Optional: hold `A` while placing a segment to force a right angle.
+  - Press `Esc` to cancel an in-progress polygon.
 
 ## Measurements
 
@@ -130,8 +138,11 @@ Copy/Paste shortcuts are also available while not typing:
 
 ## Key Bindings
 
-- Popup includes a **Key Bindings** section with **Customize** panel.
-- You can remap:
+- Popup includes a **Key Bindings** section with inline editable key badges.
+- Click a key badge and press a key (or combo) to remap.
+- Press `Backspace` or `Delete` on a focused key badge to clear that binding.
+- If you assign a key already used by another action, the old action is cleared automatically.
+- Remappable actions:
   - `Select`
   - `Lasso`
   - `Pan Mode`
@@ -149,10 +160,24 @@ Copy/Paste shortcuts are also available while not typing:
   - `Right-Angle Snap (Hold)`
   - `Save`
   - `Exit`
-- Default new bindings:
+- Defaults:
+  - `Select` = `V`
   - `Lasso` = `Q`
+  - `Pan Mode` = `H`
+  - `Connection` = `C`
+  - `Line` = `L`
+  - `Polygon` = `G`
+  - `Rectangle` = `R`
   - `Circle` = `O`
+  - `Label` = `T`
+  - `Undo` = `Z`
+  - `Redo` = `Y`
+  - `Length Toggle` = `K`
+  - `Show/Unshow Length` = `J`
+  - `Show/Unshow Area` = `U`
   - `Right-Angle Snap (Hold)` = `A`
+  - `Save` = `S`
+  - `Exit` = `X`
 
 ## Store Assets
 

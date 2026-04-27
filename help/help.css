@@ -1,0 +1,150 @@
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  background: linear-gradient(165deg, #f2f8f4 0%, #ecf4f6 55%, #e8f0f8 100%);
+  color: #1d2f2c;
+}
+
+.help-shell {
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 24px 16px 32px;
+  display: grid;
+  gap: 12px;
+}
+
+.hero {
+  border: 1px solid rgba(45, 91, 79, 0.25);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 16px;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: #234c42;
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: #3a665d;
+  font-weight: 600;
+}
+
+.card {
+  border: 1px solid rgba(45, 91, 79, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 14px 14px 12px;
+}
+
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #2d5b4f;
+}
+
+.card ul,
+.card ol {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.card li {
+  line-height: 1.4;
+  font-size: 14px;
+  color: #284740;
+}
+
+.card-lead {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #2d4a44;
+}
+
+.shortcut-grid {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid rgba(57, 99, 89, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 6px 8px;
+}
+
+.shortcut-action {
+  font-size: 13px;
+  color: #26453f;
+}
+
+.shortcut-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  border: 1px solid rgba(57, 99, 89, 0.3);
+  border-radius: 6px;
+  background: #f4fdf8;
+  color: #1f4039;
+  padding: 2px 7px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(57, 99, 89, 0.25);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+@media (max-width: 600px) {
+  .help-shell {
+    padding: 16px 12px 24px;
+    gap: 10px;
+  }
+
+  .hero h1 {
+    font-size: 21px;
+  }
+
+  .card li {
+    font-size: 13px;
+  }
+
+  .shortcut-action {
+    font-size: 12px;
+  }
+
+  .shortcut-key {
+    font-size: 11px;
+    min-width: 22px;
+  }
+}

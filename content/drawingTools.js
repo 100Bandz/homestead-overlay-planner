@@ -1985,6 +1985,25 @@
         if (labelControl) {
           const shape = this._findShapeById(labelControl.shapeId);
           if (shape && shape.type === "label") {
+            if (event.shiftKey) {
+              event.preventDefault();
+              if (
+                this.selection &&
+                typeof this.selection.has === "function" &&
+                this.selection.has(labelControl.shapeId)
+              ) {
+                this.selection.remove(labelControl.shapeId);
+              } else if (this.selection && typeof this.selection.add === "function") {
+                this.selection.add(labelControl.shapeId);
+              } else {
+                this.selection.select(labelControl.shapeId);
+              }
+              this.clearSelectedEdge();
+              this.setEditShapeId(null);
+              this.requestRender();
+              return;
+            }
+
             if (
               labelControl.control === "bubble" &&
               this._consumeLabelDoubleTap(labelControl.shapeId)

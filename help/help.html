@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Homestead Overlay Planner Help</title>
+    <link rel="stylesheet" href="help.css" />
+  </head>
+  <body>
+    <main class="help-shell">
+      <header class="hero">
+        <h1>Homestead Overlay Planner</h1>
+        <p class="subtitle">Help & Instructions</p>
+      </header>
+
+      <section class="card">
+        <h2>Quick Start</h2>
+        <ol>
+          <li>Click the extension icon, then click <strong>Start Planning</strong>.</li>
+          <li>If you are not on Google Maps, a Maps tab opens automatically.</li>
+          <li>Enter a plan name to create your plan.</li>
+          <li>Draw with the in-map toolbar, then adjust shapes in <strong>Select</strong> mode.</li>
+          <li>Use <strong>Save</strong> any time. Auto-save also runs while you edit.</li>
+        </ol>
+      </section>
+
+      <section class="card">
+        <h2>Toolbar Tools</h2>
+        <ul>
+          <li><strong>Select:</strong> Select, move, resize, rotate (non-circles), edit, and rename labels.</li>
+          <li><strong>Pan Mode:</strong> Pan the map without editing overlay shapes.</li>
+          <li><strong>Lasso:</strong> Drag a lasso box to select many items at once.</li>
+          <li><strong>Connection:</strong> Click one line endpoint, then another endpoint, to connect lines.</li>
+          <li><strong>Line:</strong> Click-drag to create one segment.</li>
+          <li><strong>Rectangle:</strong> Click-drag diagonal corners to create a rectangle.</li>
+          <li><strong>Circle:</strong> Click-drag diameter endpoints to create a circle.</li>
+          <li><strong>Polygon:</strong> Click to add points, double-click to finish.</li>
+          <li><strong>Label:</strong> Click to place a label. Tool auto-switches to <strong>Select</strong> after placement.</li>
+          <li><strong>Delete Selected:</strong> Removes current selection.</li>
+          <li><strong>Save / Exit:</strong> Save immediately or exit planning mode.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Select, Multi-Select, Lasso</h2>
+        <ul>
+          <li>Click a shape or label to select it. <strong>Shift + Click</strong> adds/removes items in selection.</li>
+          <li><strong>Ctrl/Cmd + A</strong> selects all overlay shapes and labels.</li>
+          <li>Drag any selected shape to move the whole selection together.</li>
+          <li>In <strong>Lasso</strong> mode, drag to select items inside/intersecting the lasso box.</li>
+          <li>In <strong>Lasso</strong> mode, <strong>Shift + Drag</strong> appends to existing selection.</li>
+          <li><strong>Delete</strong> or <strong>Backspace</strong> removes selected items.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Editing Shapes</h2>
+        <ul>
+          <li>In <strong>Select</strong> mode, click a line/rectangle/circle/polygon to show its draggable control points.</li>
+          <li>Drag vertex handles to reshape geometry.</li>
+          <li>Rectangle corner dragging preserves right angles and resizes as a rectangle.</li>
+          <li>Non-circle selected shapes show rotate handle (<strong>R</strong>); click-hold-drag to rotate.</li>
+          <li>Double-click a length badge to set an exact side length (or circle diameter).</li>
+          <li>Double-click a label to rename it.</li>
+          <li>Drag label bubble to move it; drag label resize handle to resize the label box.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Measurements, Area/Length Visibility, Units</h2>
+        <ul>
+          <li>Line shows length. Rectangle/polygon show side lengths and area. Circle shows diameter and area.</li>
+          <li><strong>Lengths: On/Off</strong> toggles all length labels globally.</li>
+          <li><strong>Areas: On/Off</strong> toggles all area labels globally.</li>
+          <li><strong>Show/Unshow Length</strong> mode lets you click a specific side to toggle only that length.</li>
+          <li><strong>Show/Unshow Area</strong> mode lets you click a rectangle/polygon/circle to toggle only that area.</li>
+          <li><strong>Units: Metric/Imperial</strong> switches units live; your preference is saved locally.</li>
+          <li>Default units are chosen by browser locale: US = imperial, non-US = metric.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Polygon Right-Angle Assist</h2>
+        <ul>
+          <li>While drawing a polygon, a <strong>90°</strong> indicator appears when the next segment is near perpendicular.</li>
+          <li>Hold the right-angle snap key (default: <strong>A</strong>) to force the next segment to 90°.</li>
+          <li>You can remap this key in popup <strong>Key Bindings</strong>.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>How To Draw A Polygon</h2>
+        <ol>
+          <li>Click <strong>Polygon</strong> in the toolbar (or press <strong>G</strong>).</li>
+          <li>Click once on the map to place the first corner.</li>
+          <li>Move the cursor, then click again to place the next corner.</li>
+          <li>Keep clicking to add all remaining corners.</li>
+          <li>Double-click to finish and close the polygon.</li>
+          <li>Optional: hold <strong>A</strong> while placing a side to force a right angle.</li>
+          <li>If you need to cancel before finishing, press <strong>Esc</strong>.</li>
+        </ol>
+      </section>
+
+      <section class="card">
+        <h2>Shapes Panel (In-Map Navigator)</h2>
+        <ul>
+          <li>The <strong>Shapes</strong> panel is collapsible and starts collapsed by default.</li>
+          <li>Drag the panel header to move it anywhere on screen.</li>
+          <li>The panel remembers its collapsed/expanded state and screen position.</li>
+          <li>Each item has <strong>Find</strong>: saves current plan, moves map to that item, and keeps panel state/position.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Save, Auto-Save, Storage</h2>
+        <ul>
+          <li>Plans are stored locally in <code>chrome.storage.local</code> (no cloud backend by default).</li>
+          <li>Auto-save runs after create/move/resize/rotate/delete/copy-paste/undo-redo/toggle edits (debounced).</li>
+          <li><strong>Save</strong> performs an immediate save.</li>
+          <li>Use popup <strong>Export JSON</strong> for backups and <strong>Import JSON</strong> for restore/migration.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Keyboard Shortcuts (Defaults)</h2>
+        <p class="card-lead">
+          In popup, click any key badge to remap. If a key is already in use, it is cleared from the old action and assigned to the new action.
+        </p>
+        <div class="shortcut-grid" role="table" aria-label="Default key bindings">
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Select</span><span class="shortcut-key" role="cell">V</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Lasso</span><span class="shortcut-key" role="cell">Q</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Pan Mode</span><span class="shortcut-key" role="cell">H</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Connection</span><span class="shortcut-key" role="cell">C</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Line</span><span class="shortcut-key" role="cell">L</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Polygon</span><span class="shortcut-key" role="cell">G</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Rectangle</span><span class="shortcut-key" role="cell">R</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Circle</span><span class="shortcut-key" role="cell">O</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Label</span><span class="shortcut-key" role="cell">T</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Undo / Redo</span><span class="shortcut-key" role="cell">Z / Y</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Length Toggle</span><span class="shortcut-key" role="cell">K</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Show/Unshow Length</span><span class="shortcut-key" role="cell">J</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Show/Unshow Area</span><span class="shortcut-key" role="cell">U</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Right-Angle Snap (Hold)</span><span class="shortcut-key" role="cell">A</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Save</span><span class="shortcut-key" role="cell">S</span></div>
+          <div class="shortcut-row" role="row"><span class="shortcut-action" role="cell">Exit</span><span class="shortcut-key" role="cell">X</span></div>
+        </div>
+        <p class="card-lead">
+          Additional fixed shortcuts: <strong>Ctrl/Cmd + C</strong> copy, <strong>Ctrl/Cmd + V</strong> paste, <strong>Ctrl/Cmd + A</strong> select all.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Troubleshooting</h2>
+        <ul>
+          <li>If planner UI does not appear, refresh Google Maps and click <strong>Start Planning</strong> again.</li>
+          <li>If saving fails with an extension-context error after extension reload/update, reopen popup and start planning again.</li>
+          <li>Status messages auto-dismiss after a short delay. If an error repeats, export JSON as a backup.</li>
+          <li>Keep a JSON export backup for important plans.</li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

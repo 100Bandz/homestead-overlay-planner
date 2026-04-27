@@ -73,6 +73,7 @@ let settings = {
 const ui = {
   startButton: null,
   importButton: null,
+  helpButton: null,
   importInput: null,
   pageStatus: null,
   plansList: null,
@@ -86,6 +87,7 @@ document.addEventListener("DOMContentLoaded", init);
 async function init() {
   ui.startButton = document.getElementById("startPlanningBtn");
   ui.importButton = document.getElementById("importPlanBtn");
+  ui.helpButton = document.getElementById("helpBtn");
   ui.importInput = document.getElementById("importPlanInput");
   ui.pageStatus = document.getElementById("pageStatus");
   ui.plansList = document.getElementById("plansList");
@@ -95,6 +97,7 @@ async function init() {
 
   ui.startButton.addEventListener("click", onStartPlanning);
   ui.importButton.addEventListener("click", onImportPlanClick);
+  ui.helpButton.addEventListener("click", onOpenHelpPage);
   ui.importInput.addEventListener("change", onImportPlanFileSelected);
   ui.resetBindingsBtn.addEventListener("click", async () => {
     settings.keyBindings = { ...DEFAULT_KEY_BINDINGS };
@@ -1071,6 +1074,14 @@ async function onImportPlanFileSelected(event) {
       input.value = "";
     }
   }
+}
+
+async function onOpenHelpPage() {
+  const url = chrome.runtime.getURL("help/help.html");
+  await chrome.tabs.create({
+    url,
+    active: true
+  });
 }
 
 function onExportPlan(plan) {
