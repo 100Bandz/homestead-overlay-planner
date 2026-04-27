@@ -78,10 +78,6 @@ const ui = {
   plansList: null,
   flashMessage: null,
   bindingsHint: null,
-  customizeBindingsBtn: null,
-  bindingsPanel: null,
-  bindingsRows: null,
-  closeBindingsBtn: null,
   resetBindingsBtn: null
 };
 
@@ -95,36 +91,20 @@ async function init() {
   ui.plansList = document.getElementById("plansList");
   ui.flashMessage = document.getElementById("flashMessage");
   ui.bindingsHint = document.getElementById("bindingsHint");
-  ui.customizeBindingsBtn = document.getElementById("customizeBindingsBtn");
-  ui.bindingsPanel = document.getElementById("bindingsPanel");
-  ui.bindingsRows = document.getElementById("bindingsRows");
-  ui.closeBindingsBtn = document.getElementById("closeBindingsBtn");
   ui.resetBindingsBtn = document.getElementById("resetBindingsBtn");
 
   ui.startButton.addEventListener("click", onStartPlanning);
   ui.importButton.addEventListener("click", onImportPlanClick);
   ui.importInput.addEventListener("change", onImportPlanFileSelected);
-  ui.customizeBindingsBtn.addEventListener("click", () => {
-    const nextHidden = !ui.bindingsPanel.hidden;
-    ui.bindingsPanel.hidden = nextHidden;
-    if (!nextHidden) {
-      renderBindingsRows();
-    }
-  });
-  ui.closeBindingsBtn.addEventListener("click", () => {
-    ui.bindingsPanel.hidden = true;
-  });
   ui.resetBindingsBtn.addEventListener("click", async () => {
     settings.keyBindings = { ...DEFAULT_KEY_BINDINGS };
     await saveSettings();
     renderBindingSummary();
-    renderBindingsRows();
     setFlash("Shortcuts reset to defaults.");
   });
 
   settings = await loadSettings();
   renderBindingSummary();
-  renderBindingsRows();
 
   activeTab = await getActiveTab();
   updatePageStatus();
@@ -139,9 +119,31 @@ function normalizeKeyBindings(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
   const out = {};
   Object.keys(DEFAULT_KEY_BINDINGS).forEach((key) => {
-    out[key] = normalizeShortcut(source[key]) || DEFAULT_KEY_BINDINGS[key];
+    const hasOwn = Object.prototype.hasOwnProperty.call(source, key);
+    if (!hasOwn) {
+      out[key] = DEFAULT_KEY_BINDINGS[key];
+      return;
+    }
+    out[key] = normalizeShortcut(source[key]);
   });
   return out;
+}
+
+function reassignShortcut(rawBindings, actionId, shortcut) {
+  const normalizedShortcut = normalizeShortcut(shortcut);
+  const next = normalizeKeyBindings(rawBindings);
+  if (!normalizedShortcut) {
+    next[actionId] = "";
+    return next;
+  }
+
+  Object.keys(next).forEach((key) => {
+    if (key !== actionId && next[key] === normalizedShortcut) {
+      next[key] = "";
+    }
+  });
+  next[actionId] = normalizedShortcut;
+  return next;
 }
 
 async function loadSettings() {
@@ -215,59 +217,65 @@ function renderBindingSummary() {
     return;
   }
 
-  const summaryItems = [
-    `Select: ${displayShortcut(settings.keyBindings.select)}`,
-    `Pan: ${displayShortcut(settings.keyBindings.pan)}`,
-    `Line: ${displayShortcut(settings.keyBindings.line)}`,
-    `Save: ${displayShortcut(settings.keyBindings.save)}`
-  ];
-  ui.bindingsHint.textContent = summaryItems.join(" • ");
-}
-
-function renderBindingsRows() {
-  ui.bindingsRows.innerHTML = "";
+  ui.bindingsHint.innerHTML = "";
+  const fragment = document.createDocumentFragment();
 
   BINDING_ACTIONS.forEach((actionDef) => {
-    const row = document.createElement("div");
-    row.className = "binding-row";
+    const shortcut = displayShortcut(settings.keyBindings[actionDef.id]) || "—";
 
-    const label = document.createElement("label");
-    label.className = "binding-label";
+    const item = document.createElement("div");
+    item.className = "binding-chip";
+    item.title = `${actionDef.label}: ${shortcut}`;
+
+    const label = document.createElement("span");
+    label.className = "binding-chip-label";
     label.textContent = actionDef.label;
+    label.title = actionDef.label;
 
-    const input = document.createElement("input");
-    input.className = "binding-input";
-    input.type = "text";
-    input.readOnly = true;
-    input.value = displayShortcut(settings.keyBindings[actionDef.id]);
+    const key = document.createElement("input");
+    key.className = "binding-chip-key-input";
+    key.type = "text";
+    key.readOnly = true;
+    key.value = shortcut;
+    key.size = Math.max(1, Math.min(14, shortcut.length));
+    key.setAttribute("aria-label", `${actionDef.label} shortcut`);
+    key.title = "Press a key or key combo. Backspace/Delete clears.";
 
-    input.addEventListener("focus", () => {
-      input.select();
+    key.addEventListener("focus", () => {
+      key.select();
     });
 
-    input.addEventListener("keydown", async (event) => {
+    key.addEventListener("keydown", async (event) => {
       event.preventDefault();
 
-      if ((event.key === "Backspace" || event.key === "Delete") && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
-        settings.keyBindings[actionDef.id] = "";
+      if (
+        (event.key === "Backspace" || event.key === "Delete") &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.shiftKey
+      ) {
+        settings.keyBindings = reassignShortcut(settings.keyBindings, actionDef.id, "");
       } else {
-        const shortcut = eventToShortcut(event);
-        if (!shortcut) {
+        const nextShortcut = eventToShortcut(event);
+        if (!nextShortcut) {
           return;
         }
-        settings.keyBindings[actionDef.id] = shortcut;
+        settings.keyBindings = reassignShortcut(settings.keyBindings, actionDef.id, nextShortcut);
       }
 
       settings.keyBindings = normalizeKeyBindings(settings.keyBindings);
       await saveSettings();
       renderBindingSummary();
-      input.value = displayShortcut(settings.keyBindings[actionDef.id]);
+      setFlash("Shortcut updated.");
     });
 
-    row.appendChild(label);
-    row.appendChild(input);
-    ui.bindingsRows.appendChild(row);
+    item.appendChild(label);
+    item.appendChild(key);
+    fragment.appendChild(item);
   });
+
+  ui.bindingsHint.appendChild(fragment);
 }
 
 async function getActiveTab() {

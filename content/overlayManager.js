@@ -140,8 +140,12 @@
       const source = raw && typeof raw === "object" ? raw : {};
       const normalized = {};
       Object.keys(defaults).forEach((key) => {
-        const candidate = this._normalizeShortcut(source[key]);
-        normalized[key] = candidate || defaults[key];
+        const hasOwn = Object.prototype.hasOwnProperty.call(source, key);
+        if (!hasOwn) {
+          normalized[key] = defaults[key];
+          return;
+        }
+        normalized[key] = this._normalizeShortcut(source[key]);
       });
       return normalized;
     }
