@@ -41,9 +41,9 @@
   top: 14px;
   right: 14px;
   max-width: 300px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.45);
@@ -51,6 +51,44 @@
   backdrop-filter: blur(4px);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
   pointer-events: auto;
+}
+
+.hop-toolbar-toggle {
+  appearance: none;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: #eef7f2;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: left;
+  padding: 2px 2px 8px 2px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.hop-toolbar-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.hop-toolbar.is-collapsed .hop-toolbar-toggle {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+
+.hop-toolbar.is-collapsed .hop-toolbar-content {
+  display: none;
+}
+
+.hop-toolbar.is-dragging {
+  user-select: none;
+}
+
+.hop-toolbar.is-dragging .hop-toolbar-toggle {
+  cursor: grabbing;
 }
 
 .hop-toolbar-btn {
@@ -487,8 +525,11 @@
     top: auto;
     right: 10px;
     bottom: 10px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     max-width: min(340px, calc(100vw - 20px));
+  }
+
+  .hop-toolbar-content {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .hop-status {

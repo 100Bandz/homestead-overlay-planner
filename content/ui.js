@@ -6,6 +6,12 @@
       this.root = null;
       this.svg = null;
       this.toolbar = null;
+      this.toolbarToggleButton = null;
+      this.toolbarContent = null;
+      this.toolbarCollapsed = false;
+      this.toolbarDragState = null;
+      this.toolbarDragRafId = 0;
+      this.suppressToolbarToggleClick = false;
       this.status = null;
       this.statusText = null;
       this.statusActionButton = null;
@@ -19,21 +25,28 @@
       this.navigatorDragState = null;
       this.navigatorDragRafId = 0;
       this.suppressNavigatorToggleClick = false;
+      this.toolbarStateChangeHandler = null;
       this.navigatorStateChangeHandler = null;
       this.toolbarActionHandler = null;
       this.navigatorActionHandler = null;
+      this.toolbarToggleHandler = null;
+      this.toolbarDragStartHandler = null;
+      this.toolbarDragMoveHandler = null;
+      this.toolbarDragEndHandler = null;
       this.navigatorToggleHandler = null;
       this.navigatorDragStartHandler = null;
       this.navigatorDragMoveHandler = null;
       this.navigatorDragEndHandler = null;
     }
 
-    mount(onToolbarAction, onNavigatorAction, onNavigatorStateChange) {
+    mount(onToolbarAction, onNavigatorAction, onNavigatorStateChange, onToolbarStateChange) {
       const existing = document.getElementById("hop-overlay-root");
       if (existing && existing.parentNode) {
         existing.parentNode.removeChild(existing);
       }
 
+      this.toolbarStateChangeHandler =
+        typeof onToolbarStateChange === "function" ? onToolbarStateChange : null;
       this.navigatorStateChangeHandler =
         typeof onNavigatorStateChange === "function" ? onNavigatorStateChange : null;
 
@@ -47,6 +60,14 @@
       this.toolbar = document.createElement("div");
       this.toolbar.id = "hop-toolbar";
       this.toolbar.className = "hop-toolbar";
+
+      this.toolbarToggleButton = document.createElement("button");
+      this.toolbarToggleButton.type = "button";
+      this.toolbarToggleButton.className = "hop-toolbar-toggle";
+      this.toolbarToggleButton.setAttribute("data-title", "Main Menu");
+
+      this.toolbarContent = document.createElement("div");
+      this.toolbarContent.className = "hop-toolbar-content";
 
       const buttons = [
         { action: HOP.constants.TOOLBAR_ACTION.SELECT, label: "Select" },
@@ -78,8 +99,11 @@
         button.className = "hop-toolbar-btn";
         button.setAttribute("data-action", buttonDef.action);
         button.textContent = buttonDef.label;
-        this.toolbar.appendChild(button);
+        this.toolbarContent.appendChild(button);
       });
+
+      this.toolbar.appendChild(this.toolbarToggleButton);
+      this.toolbar.appendChild(this.toolbarContent);
 
       this.status = document.createElement("div");
       this.status.id = "hop-status";
@@ -134,6 +158,24 @@
 
       this.toolbar.addEventListener("click", this.toolbarActionHandler);
 
+      this.toolbarToggleHandler = (event) => {
+        if (this.suppressToolbarToggleClick) {
+          this.suppressToolbarToggleClick = false;
+          if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          return;
+        }
+        this.setToolbarCollapsed(!this.toolbarCollapsed);
+      };
+      this.toolbarToggleButton.addEventListener("click", this.toolbarToggleHandler);
+
+      this.toolbarDragMoveHandler = this._onToolbarDragMove.bind(this);
+      this.toolbarDragEndHandler = this._onToolbarDragEnd.bind(this);
+      this.toolbarDragStartHandler = this._onToolbarDragStart.bind(this);
+      this.toolbarToggleButton.addEventListener("pointerdown", this.toolbarDragStartHandler);
+
       this.navigatorActionHandler = (event) => {
         const button = event.target.closest("[data-nav-action]");
         if (!button || !onNavigatorAction) {
@@ -168,6 +210,7 @@
       );
 
       this.setNavigatorCollapsed(true);
+      this.setToolbarCollapsed(false);
       this.setNavigatorItems([], null);
     }
 
@@ -215,6 +258,264 @@
       if (typeof label === "string" && label) {
         button.textContent = label;
       }
+    }
+
+    setToolbarCollapsed(collapsed) {
+      this.toolbarCollapsed = !!collapsed;
+      if (!this.toolbar || !this.toolbarToggleButton || !this.toolbarContent) {
+        return;
+      }
+
+      this.toolbar.classList.toggle("is-collapsed", this.toolbarCollapsed);
+      this.toolbarContent.hidden = this.toolbarCollapsed;
+      this.toolbarContent.style.display = this.toolbarCollapsed ? "none" : "grid";
+      const chevron = this.toolbarCollapsed ? "\u25B8" : "\u25BE";
+      const title = this.toolbarToggleButton.getAttribute("data-title") || "Main Menu";
+      this.toolbarToggleButton.textContent = `${chevron} ${title}`;
+      this.toolbarToggleButton.setAttribute(
+        "aria-expanded",
+        this.toolbarCollapsed ? "false" : "true"
+      );
+      this.toolbarToggleButton.setAttribute(
+        "aria-label",
+        this.toolbarCollapsed ? "Expand main menu" : "Collapse main menu"
+      );
+      this._emitToolbarStateChange();
+    }
+
+    _onToolbarDragStart(event) {
+      if (!this.toolbar || !this.toolbarToggleButton) {
+        return;
+      }
+
+      if (typeof event.button === "number" && event.button !== 0) {
+        return;
+      }
+
+      const rect = this.toolbar.getBoundingClientRect();
+      this.toolbarDragState = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        latestX: event.clientX,
+        latestY: event.clientY,
+        startLeft: rect.left,
+        startTop: rect.top,
+        width: rect.width,
+        height: rect.height,
+        moved: false,
+        lastLeft: rect.left,
+        lastTop: rect.top
+      };
+
+      this.toolbar.classList.add("is-dragging");
+      this.toolbar.style.willChange = "transform";
+      this.suppressToolbarToggleClick = false;
+
+      try {
+        this.toolbarToggleButton.setPointerCapture(event.pointerId);
+      } catch (_error) {
+        // Fallback listeners still handle drag if pointer capture is unavailable.
+      }
+
+      this.toolbarToggleButton.addEventListener("pointermove", this.toolbarDragMoveHandler);
+      this.toolbarToggleButton.addEventListener("pointerup", this.toolbarDragEndHandler);
+      this.toolbarToggleButton.addEventListener("pointercancel", this.toolbarDragEndHandler);
+
+      window.addEventListener("pointermove", this.toolbarDragMoveHandler);
+      window.addEventListener("pointerup", this.toolbarDragEndHandler);
+      window.addEventListener("pointercancel", this.toolbarDragEndHandler);
+    }
+
+    _onToolbarDragMove(event) {
+      if (!this.toolbar || !this.toolbarDragState) {
+        return;
+      }
+
+      if (event.pointerId !== this.toolbarDragState.pointerId) {
+        return;
+      }
+
+      this.toolbarDragState.latestX = event.clientX;
+      this.toolbarDragState.latestY = event.clientY;
+
+      const dx = this.toolbarDragState.latestX - this.toolbarDragState.startX;
+      const dy = this.toolbarDragState.latestY - this.toolbarDragState.startY;
+      if (!this.toolbarDragState.moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+        this.toolbarDragState.moved = true;
+      }
+
+      if (!this.toolbarDragState.moved) {
+        return;
+      }
+
+      if (!this.toolbarDragRafId) {
+        this.toolbarDragRafId = window.requestAnimationFrame(() => {
+          this.toolbarDragRafId = 0;
+          this._flushToolbarDragPosition();
+        });
+      }
+
+      event.preventDefault();
+    }
+
+    _flushToolbarDragPosition() {
+      if (!this.toolbar || !this.toolbarDragState || !this.toolbarDragState.moved) {
+        return;
+      }
+
+      const padding = 8;
+      const headerHeight = this.toolbarToggleButton
+        ? Math.max(32, this.toolbarToggleButton.getBoundingClientRect().height)
+        : 44;
+      const maxLeft = Math.max(
+        padding,
+        (window.innerWidth || 0) - this.toolbarDragState.width - padding
+      );
+      const maxTop = Math.max(
+        padding,
+        (window.innerHeight || 0) - headerHeight - padding
+      );
+
+      const dx = this.toolbarDragState.latestX - this.toolbarDragState.startX;
+      const dy = this.toolbarDragState.latestY - this.toolbarDragState.startY;
+      const nextLeft = Math.min(maxLeft, Math.max(padding, this.toolbarDragState.startLeft + dx));
+      const nextTop = Math.min(maxTop, Math.max(padding, this.toolbarDragState.startTop + dy));
+
+      this.toolbarDragState.lastLeft = nextLeft;
+      this.toolbarDragState.lastTop = nextTop;
+
+      const tx = nextLeft - this.toolbarDragState.startLeft;
+      const ty = nextTop - this.toolbarDragState.startTop;
+      this.toolbar.style.transform = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
+    }
+
+    _onToolbarDragEnd(event) {
+      if (!this.toolbarDragState) {
+        return;
+      }
+
+      if (
+        event &&
+        typeof event.pointerId === "number" &&
+        event.pointerId !== this.toolbarDragState.pointerId
+      ) {
+        return;
+      }
+
+      if (this.toolbarDragRafId) {
+        window.cancelAnimationFrame(this.toolbarDragRafId);
+        this.toolbarDragRafId = 0;
+      }
+      this._flushToolbarDragPosition();
+
+      const dragState = this.toolbarDragState;
+      const moved = !!this.toolbarDragState.moved;
+      this.toolbarDragState = null;
+
+      if (this.toolbar) {
+        this.toolbar.classList.remove("is-dragging");
+        this.toolbar.style.willChange = "";
+        this.toolbar.style.transform = "";
+
+        if (moved) {
+          this.toolbar.style.left = `${Math.round(dragState.lastLeft)}px`;
+          this.toolbar.style.top = `${Math.round(dragState.lastTop)}px`;
+          this.toolbar.style.right = "auto";
+          this.toolbar.style.bottom = "auto";
+        }
+      }
+
+      if (this.toolbarToggleButton) {
+        this.toolbarToggleButton.removeEventListener("pointermove", this.toolbarDragMoveHandler);
+        this.toolbarToggleButton.removeEventListener("pointerup", this.toolbarDragEndHandler);
+        this.toolbarToggleButton.removeEventListener("pointercancel", this.toolbarDragEndHandler);
+        try {
+          if (typeof dragState.pointerId === "number") {
+            this.toolbarToggleButton.releasePointerCapture(dragState.pointerId);
+          }
+        } catch (_error) {
+          // Ignore release errors if capture was not active.
+        }
+      }
+
+      window.removeEventListener("pointermove", this.toolbarDragMoveHandler);
+      window.removeEventListener("pointerup", this.toolbarDragEndHandler);
+      window.removeEventListener("pointercancel", this.toolbarDragEndHandler);
+
+      if (moved) {
+        this.suppressToolbarToggleClick = true;
+        if (event) {
+          event.preventDefault();
+        }
+      }
+
+      this._emitToolbarStateChange();
+    }
+
+    getToolbarState() {
+      if (!this.toolbar) {
+        return null;
+      }
+
+      const left = this._readInlinePixel(this.toolbar.style.left);
+      const top = this._readInlinePixel(this.toolbar.style.top);
+
+      return {
+        collapsed: !!this.toolbarCollapsed,
+        left,
+        top
+      };
+    }
+
+    applyToolbarState(state) {
+      if (!this.toolbar || !state || typeof state !== "object") {
+        return;
+      }
+
+      if (typeof state.collapsed === "boolean") {
+        this.setToolbarCollapsed(state.collapsed);
+      }
+
+      const left = Number(state.left);
+      const top = Number(state.top);
+      if (Number.isFinite(left) && Number.isFinite(top)) {
+        const safeLeft = Math.max(8, Math.min((window.innerWidth || 0) - 8, left));
+        const safeTop = Math.max(8, Math.min((window.innerHeight || 0) - 8, top));
+        this.toolbar.style.left = `${Math.round(safeLeft)}px`;
+        this.toolbar.style.top = `${Math.round(safeTop)}px`;
+        this.toolbar.style.right = "auto";
+        this.toolbar.style.bottom = "auto";
+      }
+    }
+
+    _emitToolbarStateChange() {
+      if (!this.toolbarStateChangeHandler) {
+        return;
+      }
+
+      const state = this.getToolbarState();
+      if (!state) {
+        return;
+      }
+
+      try {
+        this.toolbarStateChangeHandler(state);
+      } catch (_error) {
+        // Ignore callback errors to avoid breaking UI interaction.
+      }
+    }
+
+    _readInlinePixel(value) {
+      if (typeof value !== "string") {
+        return null;
+      }
+      const trimmed = value.trim();
+      if (!trimmed || !trimmed.endsWith("px")) {
+        return null;
+      }
+      const parsed = Number(trimmed.slice(0, -2));
+      return Number.isFinite(parsed) ? parsed : null;
     }
 
     setInteractionMode(tool) {
@@ -511,13 +812,13 @@
         return null;
       }
 
-      const left = Number(this.navigator.style.left.replace("px", ""));
-      const top = Number(this.navigator.style.top.replace("px", ""));
+      const left = this._readInlinePixel(this.navigator.style.left);
+      const top = this._readInlinePixel(this.navigator.style.top);
 
       return {
         collapsed: !!this.navigatorCollapsed,
-        left: Number.isFinite(left) ? left : null,
-        top: Number.isFinite(top) ? top : null
+        left,
+        top
       };
     }
 
@@ -624,6 +925,12 @@
       if (this.toolbar && this.toolbarActionHandler) {
         this.toolbar.removeEventListener("click", this.toolbarActionHandler);
       }
+      if (this.toolbarToggleButton && this.toolbarToggleHandler) {
+        this.toolbarToggleButton.removeEventListener("click", this.toolbarToggleHandler);
+      }
+      if (this.toolbarToggleButton && this.toolbarDragStartHandler) {
+        this.toolbarToggleButton.removeEventListener("pointerdown", this.toolbarDragStartHandler);
+      }
       if (this.navigatorList && this.navigatorActionHandler) {
         this.navigatorList.removeEventListener("click", this.navigatorActionHandler);
       }
@@ -652,12 +959,35 @@
         window.removeEventListener("pointercancel", this.navigatorDragEndHandler);
       }
 
+      if (this.toolbarDragState) {
+        if (this.toolbarDragRafId) {
+          window.cancelAnimationFrame(this.toolbarDragRafId);
+          this.toolbarDragRafId = 0;
+        }
+        if (this.toolbarToggleButton) {
+          this.toolbarToggleButton.removeEventListener("pointermove", this.toolbarDragMoveHandler);
+          this.toolbarToggleButton.removeEventListener("pointerup", this.toolbarDragEndHandler);
+          this.toolbarToggleButton.removeEventListener(
+            "pointercancel",
+            this.toolbarDragEndHandler
+          );
+        }
+        window.removeEventListener("pointermove", this.toolbarDragMoveHandler);
+        window.removeEventListener("pointerup", this.toolbarDragEndHandler);
+        window.removeEventListener("pointercancel", this.toolbarDragEndHandler);
+      }
+
       this.toolbarActionHandler = null;
+      this.toolbarToggleHandler = null;
+      this.toolbarDragStartHandler = null;
+      this.toolbarDragMoveHandler = null;
+      this.toolbarDragEndHandler = null;
       this.navigatorActionHandler = null;
       this.navigatorToggleHandler = null;
       this.navigatorDragStartHandler = null;
       this.navigatorDragMoveHandler = null;
       this.navigatorDragEndHandler = null;
+      this.toolbarStateChangeHandler = null;
       this.navigatorStateChangeHandler = null;
       if (this.statusDismissTimeoutId) {
         window.clearTimeout(this.statusDismissTimeoutId);
@@ -675,6 +1005,8 @@
       this.root = null;
       this.svg = null;
       this.toolbar = null;
+      this.toolbarToggleButton = null;
+      this.toolbarContent = null;
       this.status = null;
       this.statusText = null;
       this.statusActionButton = null;

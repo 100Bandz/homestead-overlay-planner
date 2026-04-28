@@ -34,8 +34,10 @@
       };
       this.navigatorBusyShapeId = null;
       this.navigatorUiStateStorageKey = "homesteadOverlayPlannerNavigatorUiStateV1";
+      this.toolbarUiStateStorageKey = "homesteadOverlayPlannerToolbarUiStateV1";
       this.unitSystemStorageKey = "homesteadOverlayPlannerUnitSystemV1";
       this.suspendNavigatorUiStatePersist = false;
+      this.suspendToolbarUiStatePersist = false;
       this.autoSaveDelayMs = 900;
       this.autoSaveTimerId = 0;
       this.autoSavePending = false;
@@ -183,14 +185,18 @@
 
       this.ui = new HOP.OverlayUI();
       this.suspendNavigatorUiStatePersist = true;
+      this.suspendToolbarUiStatePersist = true;
       this.ui.mount(
         this._handleToolbarAction.bind(this),
         this._handleNavigatorAction.bind(this),
-        this._handleNavigatorUiStateChanged.bind(this)
+        this._handleNavigatorUiStateChanged.bind(this),
+        this._handleToolbarUiStateChanged.bind(this)
       );
       await this._restoreUnitSystemPreference();
       await this._restoreNavigatorUiState();
+      await this._restoreToolbarUiState();
       this.suspendNavigatorUiStatePersist = false;
+      this.suspendToolbarUiStatePersist = false;
       this.renderer = new HOP.ShapeRenderer(this.ui.getSvg());
 
       this.drawingTools = new HOP.DrawingTools({
@@ -580,6 +586,21 @@
       };
     }
 
+    _sanitizeToolbarUiState(raw) {
+      if (!raw || typeof raw !== "object") {
+        return null;
+      }
+
+      const left = Number(raw.left);
+      const top = Number(raw.top);
+
+      return {
+        collapsed: raw.collapsed === true,
+        left: Number.isFinite(left) ? left : null,
+        top: Number.isFinite(top) ? top : null
+      };
+    }
+
     async _persistNavigatorUiState(state) {
       const sanitized = this._sanitizeNavigatorUiState(state);
       if (!sanitized) {
@@ -611,12 +632,51 @@
       }
     }
 
+    async _persistToolbarUiState(state) {
+      const sanitized = this._sanitizeToolbarUiState(state);
+      if (!sanitized) {
+        return;
+      }
+
+      try {
+        await chrome.storage.local.set({
+          [this.toolbarUiStateStorageKey]: sanitized
+        });
+      } catch (_error) {
+        // Ignore UI state storage failures.
+      }
+    }
+
+    async _restoreToolbarUiState() {
+      if (!this.ui) {
+        return;
+      }
+
+      try {
+        const payload = await chrome.storage.local.get(this.toolbarUiStateStorageKey);
+        const state = this._sanitizeToolbarUiState(payload[this.toolbarUiStateStorageKey]);
+        if (state) {
+          this.ui.applyToolbarState(state);
+        }
+      } catch (_error) {
+        // Ignore UI state restore failures.
+      }
+    }
+
     _handleNavigatorUiStateChanged(state) {
       if (this.suspendNavigatorUiStatePersist) {
         return;
       }
 
       void this._persistNavigatorUiState(state);
+    }
+
+    _handleToolbarUiStateChanged(state) {
+      if (this.suspendToolbarUiStatePersist) {
+        return;
+      }
+
+      void this._persistToolbarUiState(state);
     }
 
     _shapeTypeLabel(shapeType) {
@@ -825,6 +885,7 @@
         }
 
         await this._persistNavigatorUiState(this.ui ? this.ui.getNavigatorState() : null);
+        await this._persistToolbarUiState(this.ui ? this.ui.getToolbarState() : null);
 
         const response = await chrome.runtime.sendMessage({
           type: "HOP_SERVICE_LOAD_PLAN",
