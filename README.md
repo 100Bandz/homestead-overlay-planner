@@ -36,6 +36,8 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 
 ## In-Map Toolbar
 
+- The **Main Menu** panel is draggable and collapsible from its header.
+- Main Menu collapsed/expanded state and on-screen position are restored between sessions.
 - `Select`
 - `Lasso`
 - `Pan Mode`
@@ -184,7 +186,7 @@ Copy/Paste shortcuts are also available while not typing:
 - Store listing images live in `store-assets/`.
 - Upload screenshots using exact dimensions: `1280x800` or `640x400`.
 - If using PNG screenshots, they must not have an alpha channel.
-- Current screenshot (`store-assets/screenshot.png`) is compliant (`1280x800`, PNG, no alpha).
+- Current screenshot (`store-assets/screenshot-1280x800.png`) is compliant (`1280x800`, PNG, no alpha).
 - Validate all listing assets before publishing:
 
 ```bash
