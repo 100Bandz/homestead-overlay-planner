@@ -1759,7 +1759,7 @@
       return false;
     }
 
-    _appendPolygonPoint(point) {
+    _appendPolygonPoint(point, screenPoint) {
       if (!this.draft || this.draft.type !== "polygon") {
         this.draft = {
           type: "polygon",
@@ -1772,8 +1772,36 @@
       }
 
       const points = this.draft.points;
-      const projectedPoint = this._projectPolygonPointer(point) || point;
       const view = this.getView();
+      if (
+        view &&
+        points.length &&
+        screenPoint &&
+        Number.isFinite(screenPoint.x) &&
+        Number.isFinite(screenPoint.y)
+      ) {
+        if (points.length >= 3) {
+          const firstScreen = HOP.projection.canonicalToScreen(points[0], view);
+          const nearStartFinishThresholdPx = Math.max(VERTEX_PICK_RADIUS_PX * 1.75, 10);
+          if (HOP.geometry.distance(firstScreen, screenPoint) <= nearStartFinishThresholdPx) {
+            // Treat taps near the first vertex as finish intent so the first
+            // tap of a double-click does not append a tiny extra corner.
+            this.draft.rawPointer = point;
+            this.draft.pointer = points[0];
+            this.requestRender();
+            return;
+          }
+        }
+
+        const lastScreen = HOP.projection.canonicalToScreen(points[points.length - 1], view);
+        if (HOP.geometry.distance(lastScreen, screenPoint) < 3) {
+          this._setPolygonDraftPointer(point);
+          this.requestRender();
+          return;
+        }
+      }
+
+      const projectedPoint = this._projectPolygonPointer(point) || point;
       if (view && points.length) {
         const lastScreen = HOP.projection.canonicalToScreen(points[points.length - 1], view);
         const nextScreen = HOP.projection.canonicalToScreen(projectedPoint, view);
@@ -2200,11 +2228,11 @@
           this.draft.points.length >= 2 &&
           this._consumePolygonDoubleTap(screenPoint)
         ) {
-          this._finishPolygonAtPoint(point);
+          this._finishPolygonAtPoint(null);
           return;
         }
 
-        this._appendPolygonPoint(point);
+        this._appendPolygonPoint(point, screenPoint);
         return;
       }
 
@@ -2836,7 +2864,7 @@
 
       event.preventDefault();
       event.stopPropagation();
-      this._finishPolygonAtPoint(this._canonicalPointFromEvent(event));
+      this._finishPolygonAtPoint(null);
     }
 
     _appendShape(shape) {
