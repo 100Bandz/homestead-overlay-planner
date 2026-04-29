@@ -59,7 +59,10 @@
           ? options.connectLineEndpoints
           : () => false;
 
-      this.copiedShape = null;
+      this.copiedShapes = null;
+      this.pasteSequence = 0;
+      this.lastPointerCanonical = null;
+      this.lastPasteAnchorCanonical = null;
       this.draft = null;
       this.pointerDrawing = null;
       this.draggingShape = null;
@@ -121,6 +124,7 @@
       this.lastEdgeMeasurementTap = null;
       this.lastLabelTap = null;
       this.lastPolygonTap = null;
+      this.lastPointerCanonical = null;
       if (this.svg) {
         this.svg.style.cursor = "";
       }
@@ -218,21 +222,103 @@
     }
 
     _copySelectedShape() {
-      const selectedId = this.selection.getSelectedId();
-      if (!selectedId) {
+      const selectedIds =
+        this.selection && typeof this.selection.getSelectedIds === "function"
+          ? this.selection.getSelectedIds()
+          : [this.selection && this.selection.getSelectedId ? this.selection.getSelectedId() : null]
+              .filter(Boolean);
+
+      if (!selectedIds.length) {
         this.reportStatus("Select a line, rectangle, circle, polygon, or label first.");
         return false;
       }
 
-      const shape = this._findShapeById(selectedId);
-      if (!this._isCopyableShape(shape)) {
+      const selectedSet = new Set(selectedIds);
+      const copyable = this.getShapes()
+        .filter((shape) => selectedSet.has(shape.id))
+        .filter((shape) => this._isCopyableShape(shape));
+
+      if (!copyable.length) {
         this.reportStatus("Only line, rectangle, circle, polygon, and label shapes can be copied.");
         return false;
       }
 
-      this.copiedShape = JSON.parse(JSON.stringify(shape));
-      this.reportStatus("Shape copied.");
+      this.copiedShapes = JSON.parse(JSON.stringify(copyable));
+      this.pasteSequence = 0;
+      this.lastPasteAnchorCanonical = null;
+      this.reportStatus(copyable.length === 1 ? "Shape copied." : `${copyable.length} shapes copied.`);
       return true;
+    }
+
+    _shapeReferencePoints(shape) {
+      if (!shape || typeof shape !== "object") {
+        return [];
+      }
+
+      if (shape.type === "label") {
+        if (shape.point && Number.isFinite(shape.point.x) && Number.isFinite(shape.point.y)) {
+          return [{ x: Number(shape.point.x), y: Number(shape.point.y) }];
+        }
+        return [];
+      }
+
+      if (shape.type === "circle") {
+        if (
+          !shape.center ||
+          !Number.isFinite(shape.center.x) ||
+          !Number.isFinite(shape.center.y) ||
+          !Number.isFinite(shape.radius) ||
+          shape.radius <= 0
+        ) {
+          return [];
+        }
+        const center = { x: Number(shape.center.x), y: Number(shape.center.y) };
+        const radius = Number(shape.radius);
+        return [
+          center,
+          { x: HOP.projection.normalizeCanonicalX(center.x + radius), y: center.y },
+          { x: HOP.projection.normalizeCanonicalX(center.x - radius), y: center.y },
+          { x: center.x, y: this._normalizeY(center.y + radius) },
+          { x: center.x, y: this._normalizeY(center.y - radius) }
+        ];
+      }
+
+      if (!Array.isArray(shape.points)) {
+        return [];
+      }
+
+      return shape.points
+        .filter((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y))
+        .map((point) => ({ x: Number(point.x), y: Number(point.y) }));
+    }
+
+    _copiedShapesReferencePoint(shapes) {
+      const copied = Array.isArray(shapes) ? shapes : [];
+      const points = [];
+      copied.forEach((shape) => {
+        points.push(...this._shapeReferencePoints(shape));
+      });
+      if (!points.length) {
+        return null;
+      }
+
+      let minX = points[0].x;
+      let maxX = points[0].x;
+      let minY = points[0].y;
+      let maxY = points[0].y;
+
+      for (let i = 1; i < points.length; i += 1) {
+        const point = points[i];
+        if (point.x < minX) minX = point.x;
+        if (point.x > maxX) maxX = point.x;
+        if (point.y < minY) minY = point.y;
+        if (point.y > maxY) maxY = point.y;
+      }
+
+      return {
+        x: HOP.projection.normalizeCanonicalX((minX + maxX) / 2),
+        y: this._normalizeY((minY + maxY) / 2)
+      };
     }
 
     _offsetPoint(point, dx, dy) {
@@ -265,55 +351,131 @@
       return clone;
     }
 
+    _isPastedShapeValid(shape) {
+      if (!shape || typeof shape !== "object") {
+        return false;
+      }
+
+      if (shape.type === "label") {
+        return (
+          !!shape.point &&
+          Number.isFinite(shape.point.x) &&
+          Number.isFinite(shape.point.y)
+        );
+      }
+
+      if (shape.type === "circle") {
+        return (
+          !!shape.center &&
+          Number.isFinite(shape.center.x) &&
+          Number.isFinite(shape.center.y) &&
+          Number.isFinite(shape.radius) &&
+          shape.radius > 0
+        );
+      }
+
+      return Array.isArray(shape.points) && shape.points.length >= 2;
+    }
+
     _pasteCopiedShape() {
-      if (!this._isCopyableShape(this.copiedShape)) {
+      const copied = Array.isArray(this.copiedShapes)
+        ? this.copiedShapes.filter((shape) => this._isCopyableShape(shape))
+        : [];
+
+      if (!copied.length) {
         this.reportStatus("Copy a line, rectangle, circle, polygon, or label first.");
         return false;
       }
 
       const view = this.getView();
       const offsetScreenPixels = 24;
-      const offsetCanonical = view ? view.scale * offsetScreenPixels : 0;
+      const referencePoint = this._copiedShapesReferencePoint(copied);
+      const cursorPoint = this.lastPointerCanonical;
+      let dx = 0;
+      let dy = 0;
 
-      const pasted = this._offsetCopyShape(
-        this.copiedShape,
-        offsetCanonical,
-        offsetCanonical
-      );
+      if (referencePoint && cursorPoint) {
+        dx = HOP.projection.wrapDeltaX(cursorPoint.x - referencePoint.x);
+        dy = cursorPoint.y - referencePoint.y;
 
-      if (pasted.type === "label") {
-        if (!pasted.point || !Number.isFinite(pasted.point.x) || !Number.isFinite(pasted.point.y)) {
+        let shouldCascade = false;
+        if (view && this.lastPasteAnchorCanonical) {
+          const currentScreen = HOP.projection.canonicalToScreen(cursorPoint, view);
+          const previousScreen = HOP.projection.canonicalToScreen(this.lastPasteAnchorCanonical, view);
+          shouldCascade = HOP.geometry.distance(currentScreen, previousScreen) < 3;
+        }
+
+        if (shouldCascade && view) {
+          this.pasteSequence += 1;
+          const cascadeOffset = view.scale * offsetScreenPixels * this.pasteSequence;
+          dx = HOP.projection.wrapDeltaX(dx + cascadeOffset);
+          dy += cascadeOffset;
+        } else {
+          this.pasteSequence = 0;
+        }
+
+        this.lastPasteAnchorCanonical = {
+          x: Number(cursorPoint.x),
+          y: Number(cursorPoint.y)
+        };
+      } else {
+        const nextPasteStep = this.pasteSequence + 1;
+        const offsetCanonical = view ? view.scale * offsetScreenPixels * nextPasteStep : 0;
+        dx = offsetCanonical;
+        dy = offsetCanonical;
+        this.pasteSequence = nextPasteStep;
+        this.lastPasteAnchorCanonical = null;
+      }
+
+      const before = this._cloneShapes(this.getShapes());
+      const next = this.getShapes().slice();
+      const pastedIds = [];
+
+      for (let i = 0; i < copied.length; i += 1) {
+        const pasted = this._offsetCopyShape(
+          copied[i],
+          dx,
+          dy
+        );
+
+        if (!this._isPastedShapeValid(pasted)) {
           this.reportStatus("Could not paste shape.");
           return false;
         }
-      } else if (pasted.type === "circle") {
-        if (
-          !pasted.center ||
-          !Number.isFinite(pasted.center.x) ||
-          !Number.isFinite(pasted.center.y) ||
-          !Number.isFinite(pasted.radius) ||
-          pasted.radius <= 0
-        ) {
+
+        if (pasted.type === "line") {
+          delete pasted.connectionId;
+        }
+
+        pasted.id = HOP.ids.createId(
+          pasted.type === "label" ? "shape_label" : `shape_${pasted.type || "copy"}`
+        );
+
+        const prepared = this.prepareNewShape(pasted);
+        if (!prepared) {
           this.reportStatus("Could not paste shape.");
           return false;
         }
-      } else if (!Array.isArray(pasted.points) || pasted.points.length < 2) {
-        this.reportStatus("Could not paste shape.");
-        return false;
+
+        next.push(prepared);
+        pastedIds.push(prepared.id);
       }
 
-      if (pasted.type === "line") {
-        delete pasted.connectionId;
-      }
+      this.setShapes(next, {
+        skipRender: true,
+        recordHistory: true,
+        historySnapshot: before
+      });
 
-      pasted.id = HOP.ids.createId(
-        pasted.type === "label" ? "shape_label" : `shape_${pasted.type || "copy"}`
-      );
-      this._appendShape(pasted);
+      if (this.selection && typeof this.selection.selectMany === "function") {
+        this.selection.selectMany(pastedIds, { primaryId: pastedIds[pastedIds.length - 1] });
+      } else if (pastedIds.length) {
+        this.selection.select(pastedIds[pastedIds.length - 1]);
+      }
       this.setEditShapeId(null);
       this.clearSelectedEdge();
       this.requestRender();
-      this.reportStatus("Shape pasted.");
+      this.reportStatus(pastedIds.length === 1 ? "Shape pasted." : `${pastedIds.length} shapes pasted.`);
       return true;
     }
 
@@ -1932,6 +2094,9 @@
       }
       const point = this._canonicalPointFromEvent(event);
       const screenPoint = this._screenPointFromEvent(event);
+      if (point) {
+        this.lastPointerCanonical = { x: Number(point.x), y: Number(point.y) };
+      }
       this._updateSelectCursorFromEvent(event);
 
       if (tool === HOP.constants.TOOL.SELECT) {
@@ -2289,6 +2454,7 @@
       if (!point) {
         return;
       }
+      this.lastPointerCanonical = { x: Number(point.x), y: Number(point.y) };
 
       const tool = this.getTool();
       this._updateSelectCursorFromEvent(event);
