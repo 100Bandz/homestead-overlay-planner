@@ -63,8 +63,8 @@ Homestead Overlay Planner is a Chrome Manifest V3 extension that adds an SVG pla
 `Pan Mode` is the default tool when the overlay starts or when a plan is loaded.
 
 Copy/Paste shortcuts are also available while not typing:
-- `Ctrl/Cmd + C` to copy the selected line/rectangle/circle/polygon/label
-- `Ctrl/Cmd + V` to paste a cloned shape
+- `Ctrl/Cmd + C` to copy the selected line/rectangle/circle/polygon/label (including multi-selection)
+- `Ctrl/Cmd + V` to paste at the current cursor location on the map
 - `Ctrl/Cmd + A` to select all shapes for group move
 - `Shift + Click` to add/remove shapes from selection
 
