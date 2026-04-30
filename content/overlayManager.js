@@ -780,6 +780,247 @@
         }));
     }
 
+    _isClosedAreaShape(shape) {
+      if (!shape || typeof shape !== "object") {
+        return false;
+      }
+
+      if (shape.type === "circle") {
+        return (
+          shape.center &&
+          Number.isFinite(shape.center.x) &&
+          Number.isFinite(shape.center.y) &&
+          Number.isFinite(shape.radius) &&
+          Number(shape.radius) > 0
+        );
+      }
+
+      if ((shape.type !== "rectangle" && shape.type !== "polygon") || !Array.isArray(shape.points)) {
+        return false;
+      }
+
+      if (shape.points.length < 3) {
+        return false;
+      }
+
+      const openEdges =
+        shape.measurements &&
+        Array.isArray(shape.measurements.openEdges)
+          ? shape.measurements.openEdges
+          : [];
+      return !openEdges.some((value) => value === true);
+    }
+
+    _shapeAreaScore(shape) {
+      if (!shape || typeof shape !== "object") {
+        return 0;
+      }
+
+      if (
+        shape.type === "circle" &&
+        Number.isFinite(shape.radius) &&
+        Number(shape.radius) > 0
+      ) {
+        const radius = Number(shape.radius);
+        return Math.PI * radius * radius;
+      }
+
+      if (
+        (shape.type !== "rectangle" && shape.type !== "polygon") ||
+        !Array.isArray(shape.points) ||
+        shape.points.length < 3
+      ) {
+        return 0;
+      }
+
+      const points = shape.points
+        .filter((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y))
+        .map((point) => ({ x: Number(point.x), y: Number(point.y) }));
+      if (points.length < 3) {
+        return 0;
+      }
+
+      const baseX = points[0].x;
+      const unwrapped = points.map((point) => ({
+        x: baseX + HOP.projection.wrapDeltaX(point.x - baseX),
+        y: point.y
+      }));
+
+      let sum = 0;
+      for (let i = 0; i < unwrapped.length; i += 1) {
+        const next = (i + 1) % unwrapped.length;
+        sum +=
+          unwrapped[i].x * unwrapped[next].y -
+          unwrapped[next].x * unwrapped[i].y;
+      }
+
+      return Math.abs(sum) * 0.5;
+    }
+
+    _pointInsideShape(point, shape) {
+      if (
+        !point ||
+        !Number.isFinite(point.x) ||
+        !Number.isFinite(point.y) ||
+        !shape
+      ) {
+        return false;
+      }
+
+      if (
+        shape.type === "circle" &&
+        shape.center &&
+        Number.isFinite(shape.center.x) &&
+        Number.isFinite(shape.center.y) &&
+        Number.isFinite(shape.radius) &&
+        Number(shape.radius) > 0
+      ) {
+        const centerX = Number(shape.center.x);
+        const centerY = Number(shape.center.y);
+        const dx = HOP.projection.wrapDeltaX(Number(point.x) - centerX);
+        const dy = Number(point.y) - centerY;
+        const radius = Number(shape.radius);
+        return dx * dx + dy * dy <= radius * radius + 4;
+      }
+
+      if (
+        (shape.type !== "rectangle" && shape.type !== "polygon") ||
+        !Array.isArray(shape.points) ||
+        shape.points.length < 3
+      ) {
+        return false;
+      }
+
+      const polygon = shape.points
+        .filter((value) => value && Number.isFinite(value.x) && Number.isFinite(value.y))
+        .map((value) => ({ x: Number(value.x), y: Number(value.y) }));
+      if (polygon.length < 3) {
+        return false;
+      }
+
+      const baseX = polygon[0].x;
+      const unwrappedPolygon = polygon.map((vertex) => ({
+        x: baseX + HOP.projection.wrapDeltaX(vertex.x - baseX),
+        y: vertex.y
+      }));
+      const unwrappedPoint = {
+        x: baseX + HOP.projection.wrapDeltaX(Number(point.x) - baseX),
+        y: Number(point.y)
+      };
+
+      if (HOP.geometry.pointInPolygon(unwrappedPoint, unwrappedPolygon)) {
+        return true;
+      }
+
+      const epsilon = 2;
+      for (let i = 0; i < unwrappedPolygon.length; i += 1) {
+        const next = (i + 1) % unwrappedPolygon.length;
+        const distance = HOP.geometry.distanceToSegment(
+          unwrappedPoint,
+          unwrappedPolygon[i],
+          unwrappedPolygon[next]
+        );
+        if (distance <= epsilon) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    _isShapeInsideShape(innerShape, outerShape) {
+      if (!innerShape || !outerShape || innerShape.id === outerShape.id) {
+        return false;
+      }
+      if (!this._isClosedAreaShape(outerShape)) {
+        return false;
+      }
+
+      const referencePoints = this._shapePoints(innerShape);
+      if (!referencePoints.length) {
+        return false;
+      }
+
+      return referencePoints.every((point) => this._pointInsideShape(point, outerShape));
+    }
+
+    _orderedShapesForRender(shapes) {
+      const list = Array.isArray(shapes) ? shapes : [];
+      if (list.length < 2) {
+        return list;
+      }
+
+      const metadata = list.map((shape, index) => ({
+        shape,
+        canContain: this._isClosedAreaShape(shape),
+        areaScore: this._shapeAreaScore(shape)
+      }));
+
+      const outgoing = Array.from({ length: metadata.length }, () => []);
+      const indegree = Array.from({ length: metadata.length }, () => 0);
+      const minAreaRatio = 1.01;
+
+      for (let outerIndex = 0; outerIndex < metadata.length; outerIndex += 1) {
+        const outer = metadata[outerIndex];
+        if (!outer.canContain) {
+          continue;
+        }
+
+        for (let innerIndex = 0; innerIndex < metadata.length; innerIndex += 1) {
+          if (outerIndex === innerIndex) {
+            continue;
+          }
+
+          const inner = metadata[innerIndex];
+          const innerArea = inner.areaScore;
+          if (innerArea > 0 && outer.areaScore <= innerArea * minAreaRatio) {
+            continue;
+          }
+
+          if (!this._isShapeInsideShape(inner.shape, outer.shape)) {
+            continue;
+          }
+
+          outgoing[outerIndex].push(innerIndex);
+          indegree[innerIndex] += 1;
+        }
+      }
+
+      const queue = [];
+      for (let i = 0; i < indegree.length; i += 1) {
+        if (indegree[i] === 0) {
+          queue.push(i);
+        }
+      }
+      queue.sort((a, b) => a - b);
+
+      const orderedIndices = [];
+      while (queue.length) {
+        const current = queue.shift();
+        orderedIndices.push(current);
+        const targets = outgoing[current];
+        for (let i = 0; i < targets.length; i += 1) {
+          const target = targets[i];
+          indegree[target] -= 1;
+          if (indegree[target] === 0) {
+            queue.push(target);
+          }
+        }
+        queue.sort((a, b) => a - b);
+      }
+
+      if (orderedIndices.length !== list.length) {
+        const used = new Set(orderedIndices);
+        for (let i = 0; i < list.length; i += 1) {
+          if (!used.has(i)) {
+            orderedIndices.push(i);
+          }
+        }
+      }
+
+      return orderedIndices.map((index) => list[index]);
+    }
+
     _shapeBounds(points) {
       const safePoints = Array.isArray(points) ? points : [];
       if (!safePoints.length) {
@@ -2333,6 +2574,8 @@
         return;
       }
 
+      const renderShapes = this._orderedShapesForRender(this.shapes);
+
       this._refreshToolbarStates();
       if (this.ui) {
         this.ui.setNavigatorItems(
@@ -2343,7 +2586,7 @@
 
       this.renderer.render({
         view: this._buildViewModel(),
-        shapes: this.shapes,
+        shapes: renderShapes,
         selectedId: this.selection.getSelectedId(),
         selectedIds:
           typeof this.selection.getSelectedIds === "function"
